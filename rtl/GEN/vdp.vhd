@@ -70,8 +70,8 @@ entity VDP2 is
 		
 		DBG_OFFSET_X : out unsigned(9 downto 0);
 		DBG_OFFSET_Y : out unsigned(10 downto 0);
-		DBG_CELL_X 	: out unsigned(5 downto 0);
-		DBG_CELL_Y 	: out unsigned(6 downto 0);
+--		DBG_CELL_X 	: out unsigned(5 downto 0);
+--		DBG_CELL_Y 	: out unsigned(6 downto 0);
 		DBG_WIN_HIT : out std_logic;
 		DBG_FIFO_ADDR : out std_logic_vector(16 downto 0);
 		DBG_FIFO_DATA : out std_logic_vector(15 downto 0);
@@ -462,8 +462,6 @@ begin
 								CODE(5 downto 4) <= "00"; -- attempt to fix lotus i
 							end if;
 							FF_DTACK_N <= '0';
-							-- Note : Genesis Plus does address setting
-							-- even in Register Set mode. Normal ?
 						end if;
 					elsif A(4 downto 2) = "111" then
 						DBG <= DI;
@@ -486,7 +484,6 @@ begin
 							if DT_RD_EXEC = '0' and DT_RD_PEND = '0' then
 								DT_RD_PEND <= '1';
 								DT_RD_CODE <= CODE(3 downto 0);
---								FF_DO <= DT_RD_DATA;
 								FF_DTACK_N <= '0';
 							end if;
 						else
@@ -494,15 +491,12 @@ begin
 						end if;
 					elsif A(4 downto 2) = "001" then				-- Control Port C00004-C00006 (Read Status Register)
 						PENDING <= '0';
---						FF_DO <= STATUS;
 						SOVR_CLR <= '1';
 						SCOL_CLR <= '1';
 						FF_DTACK_N <= '0';
 					elsif A(4 downto 3) = "01" then				-- HV Counter C00008-C0000A
---						FF_DO <= HV;
 						FF_DTACK_N <= '0';
 					elsif A(4) = '1' then							-- unused, PSG, DBG
---						FF_DO <= x"FFFF";
 						FF_DTACK_N <= '0';
 					end if;
 				end if;
@@ -806,7 +800,6 @@ begin
 		end if;
 	end process;
 	
---	DO <= FF_DO;
 	DTACK_N <= FF_DTACK_N;
 	BGACK_N <= FF_BGACK_N;
 	BR_N <= FF_BR_N;
@@ -1394,8 +1387,8 @@ begin
 		
 		DBG_OFFSET_X <= OFFSET_X;
 		DBG_OFFSET_Y <= OFFSET_Y;
-		DBG_CELL_X <= CELL_X;
-		DBG_CELL_Y <= CELL_Y;
+--		DBG_CELL_X <= CELL_X;
+--		DBG_CELL_Y <= CELL_Y;
 		DBG_WIN_HIT <= WIN_HIT;
 		
 		if RST_N = '0' then

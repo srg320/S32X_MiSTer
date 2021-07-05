@@ -118,11 +118,7 @@ module gen
 	output  [7:0] SERJOYSTICK_OUT,
 	input   [1:0] SER_OPT,
 
-	output        RAM_CE_N,
-	input         RAM_RDY,
-
-	output        RFS,
-	input         RFS_RDY,
+	input         MEM_RDY,
 
 	input         GG_RESET,
 	input         GG_EN,
@@ -139,7 +135,8 @@ module gen
 	output [23:0] DBG_M68K_A,
 	output [23:0] DBG_MBUS_A,
 	output [15:0] DBG_HOOK,
-	output [7:0] DBG_HOOK2
+	output [7:0] DBG_HOOK2,
+	output [7:0] DBG_Z80_HOOK
 );
 
 reg reset;
@@ -271,13 +268,14 @@ CODES #(.ADDR_WIDTH(24), .DATA_WIDTH(16)) codes (
 //-----------------------------------------------------------------------
 // 68K RAM
 //-----------------------------------------------------------------------
+wire [15:0] WRAM_Q;
 dpram #(15) ram68k_u
 (
 	.clock(MCLK),
 	.address_a(MBUS_A[15:1]),
 	.data_a(MBUS_DO[15:8]),
 	.wren_a(RAM_SEL & ~MBUS_RNW & ~MBUS_UDS_N),
-	.q_a(ram68k_q[15:8]),
+	.q_a(WRAM_Q[15:8]),
 
 	.address_b(ram_rst_a[15:1]),
 	.wren_b(LOADING)
@@ -289,12 +287,11 @@ dpram #(15) ram68k_l
 	.address_a(MBUS_A[15:1]),
 	.data_a(MBUS_DO[7:0]),
 	.wren_a(RAM_SEL & ~MBUS_RNW & ~MBUS_LDS_N),
-	.q_a(ram68k_q[7:0]),
+	.q_a(WRAM_Q[7:0]),
 
 	.address_b(ram_rst_a[15:1]),
 	.wren_b(LOADING)
 );
-wire [15:0] ram68k_q;
 
 //--------------------------------------------------------------
 // VDP + PSG
@@ -578,14 +575,13 @@ localparam 	MBUS_IDLE         = 0,
 				MBUS_FINISH       = 15; 
 
 always @(posedge MCLK) begin
-	reg [9:0] refresh_timer, refresh_timer2;
+	reg [7:0] rfs_rom_timer, rfs_ram_timer;
 	reg rfs_ram_pend, rfs_rom_pend;
-	reg [1:0] rfs_wait;
-	reg [1:0] cycle_cnt;
-
-	reg RAM_RDY_OLD;
+	reg [1:0] rfs_rom_delay, rfs_ram_delay;
+	reg [1:0] zbus_delay;
 	
 	if (reset) begin
+		mstate <= MBUS_IDLE;
 		M68K_MBUS_DTACK_N <= 1;
 		Z80_MBUS_DTACK_N  <= 1;
 		VDP_MBUS_DTACK_N  <= 1;
@@ -600,44 +596,50 @@ always @(posedge MCLK) begin
 		CTRL_SEL <= 0;
 		ZBUS_SEL <= 0;
 		FDC_SEL <= 0;
-		mstate <= MBUS_IDLE;
-		OPEN_BUS <= 'h4E71;
 		TIME_SEL <= 0;
+		OPEN_BUS <= 'h4E71;
 
-		RFS <= 0;
 		DBG_HOOK <= 0;
 		DBG_HOOK2 <= 0;
 	end
 	else begin
 		if (M68K_CLKENp) begin
-			refresh_timer <= refresh_timer + 1'd1;
-			if (VRAM_RFRS) begin
-				refresh_timer <= 0;
+			rfs_rom_timer <= rfs_rom_timer + 8'd1;
+			if (rfs_rom_timer == 8'd127) begin
+				rfs_rom_timer <= 0;
+				rfs_rom_pend <= 1;
+			end
+			else if (rfs_rom_timer == 8'd02) begin
 				rfs_rom_pend <= 0;
 			end
-			else if (refresh_timer == 'd119) begin
-				refresh_timer <= 0;
-				//rfs_rom_pend <= 1;
-			end
 			
-			refresh_timer2 <= refresh_timer2 + 1'd1;
-			if (VRAM_RFRS) begin
-				refresh_timer2 <= 0;
+			rfs_ram_timer <= rfs_ram_timer + 8'd1;
+			if (rfs_ram_timer == 8'd119) begin
+				rfs_ram_pend <= 1;
+			end
+			else if (rfs_ram_timer == 8'd132) begin
+				rfs_ram_timer <= 0;
 				rfs_ram_pend <= 0;
-			end
-			else if (refresh_timer2 == 'd119) begin
-				refresh_timer2 <= 0;
-				//rfs_ram_pend <= 1;
+				rfs_ram_delay <= 2'd3;
 			end
 			
-			if (cycle_cnt) cycle_cnt = cycle_cnt - 1'd1;
+			if (!VBUS_BGACK_N) begin
+//				rfs_rom_timer <= 0;
+				rfs_rom_pend <= 0;
+//				rfs_ram_timer <= 0;
+				rfs_ram_pend <= 0;
+				rfs_ram_delay <= 2'd0;
+			end
+			
+			if (rfs_rom_delay) rfs_rom_delay <= rfs_rom_delay - 2'd1;
+			if (rfs_ram_delay) rfs_ram_delay <= rfs_ram_delay - 2'd1;
+			if (zbus_delay) zbus_delay <= zbus_delay - 2'd1;
 		end
 
-		RAM_RDY_OLD <= RAM_RDY;
 		case(mstate)
 		MBUS_IDLE:
 			begin
-				if (!PAUSE_EN) begin
+			if (!PAUSE_EN) begin
 				msrc <= MSRC_NONE;
 				if (!M68K_AS_N && (!M68K_LDS_N || !M68K_UDS_N) && M68K_MBUS_DTACK_N && !M68K_INTACK) begin
 					msrc <= MSRC_M68K;
@@ -650,20 +652,16 @@ always @(posedge MCLK) begin
 					MBUS_ASEL_N <= M68K_A[23];
 					
 					case (M68K_A[23:20])
-						//ROM: 000000-3FFFFF
-						4'h0,4'h1,4'h2,4'h3: begin
+						//CART: 000000-3FFFFF,400000-7FFFFF
+						4'h0,4'h1,4'h2,4'h3,4'h4,4'h5,4'h6,4'h7: begin
 							ROM_SEL <= 1;
-							mstate <= MBUS_ROM_WAIT;
-							cycle_cnt <= rfs_rom_pend ? 2'd2 : 2'd0;
+							mstate <= MBUS_ROM_REFRESH;
+							if (!rfs_rom_delay && rfs_rom_pend) rfs_rom_delay <= 2'd2;
+							rfs_rom_pend <= 0;
+							rfs_ram_pend <= 0;
 						end
 						
-						//400000-7FFFFF
-						4'h4,4'h5,4'h6,4'h7: begin
-							M68K_MBUS_DTACK_N <= 0;
-							mstate <= MBUS_FINISH;
-						end
-						
-						//32X: 800000-9FFFFF (DTACK area)
+						//800000-9FFFFF (DTACK area)
 						4'h8,4'h9: begin
 							mstate <= MBUS_NOT_USED;
 						end
@@ -674,6 +672,7 @@ always @(posedge MCLK) begin
 							if (M68K_A[23:16] == 'hA0) begin
 								if (!Z80_BUSRQ_N) begin
 									ZBUS_SEL <= 1;
+									zbus_delay <= 2'd2;
 									mstate <= MBUS_ZBUS_READ;
 								end else begin
 									M68K_MBUS_DTACK_N <= 0;
@@ -686,7 +685,7 @@ always @(posedge MCLK) begin
 								if (M68K_A[7:5] == 3'b000) begin
 									IO_SEL <= 1;
 									mstate <= MBUS_IO_READ;
-								end else begin	//Ballz 3D
+								end else begin
 									M68K_MBUS_DTACK_N <= 0;
 									mstate <= MBUS_FINISH;
 								end
@@ -739,8 +738,8 @@ always @(posedge MCLK) begin
 							//VDP: C00000-C0001F (+mirrors)
 							if (M68K_A[23:21] == 3'b110 && !M68K_A[18:16] && !M68K_A[7:5]) begin
 								VDP_SEL <= 1;
-								if (rfs_rom_pend && !M68K_RNW) rfs_rom_pend <= 0;
-								if (rfs_ram_pend && !M68K_RNW) rfs_ram_pend <= 0;
+								if (rfs_rom_pend && !M68K_A[4] && !M68K_RNW) rfs_rom_pend <= 0;
+								if (rfs_ram_pend && !M68K_A[4] && !M68K_RNW) rfs_ram_pend <= 0;
 								mstate <= MBUS_VDP_READ;
 							end
 							
@@ -752,116 +751,14 @@ always @(posedge MCLK) begin
 						//RAM: E00000-FFFFFF
 						4'hE,4'hF: begin
 							RAM_SEL <= 1;
-							mstate <= MBUS_RAM_WAIT;
-							cycle_cnt <= rfs_ram_pend ? 2'd3 : 2'd0;
+							mstate <= MBUS_RAM_REFRESH;
+							if (!rfs_ram_delay && rfs_ram_pend) rfs_ram_delay <= 2'd3;
+							rfs_ram_pend <= 0;
 						end
 						
 						default:;
 					endcase
-					
-//					if (M68K_A[23:22] == 2'b00) begin
-//						ROM_SEL <= 1;
-//						mstate <= MBUS_ROM_WAIT;
-//						cycle_cnt <= rfs_rom_pend ? 2'd2 : 2'd0;
-//					end
-//						
-//					//400000-7FFFFF
-//					else if (M68K_A[23:22] == 2'b01) begin
-//						M68K_MBUS_DTACK_N <= 0;
-//						mstate <= MBUS_FINISH;
-//					end
-//						
-//					//DTACK area
-//					//32X: 800000-9FFFFF
-//					else if (M68K_A[23:21] == 3'b100) begin
-//						mstate <= MBUS_NOT_USED;
-//					end
-//					
-//					//A00000-BFFFFF
-//					else if (M68K_A[23:21] == 3'b101) begin
-//						//ZBUS: A00000-A07FFF/A08000-A0FFFF
-//						if (M68K_A[23:16] == 'hA0) begin
-//							if (!Z80_BUSRQ_N) begin
-//								ZBUS_SEL <= 1;
-//								mstate <= MBUS_ZBUS_READ;
-//							end else begin
-//								M68K_MBUS_DTACK_N <= 0;
-//								mstate <= MBUS_FINISH;
-//							end
-//						end
-//					
-//						//I/O: A10000-A1001F (+mirrors)
-//						else if (M68K_A[23:8] == 16'hA100) begin
-//							if (M68K_A[7:5] == 3'b000) begin
-//								IO_SEL <= 1;
-//								mstate <= MBUS_IO_READ;
-//							end else begin	//Ballz 3D
-//								M68K_MBUS_DTACK_N <= 0;
-//								mstate <= MBUS_FINISH;
-//							end
-//						end
-//		
-//						//Memory mode: A11000
-//						else if (M68K_A[23:8] == 16'hA110) begin
-//							M68K_MBUS_DTACK_N <= 0;
-//							mstate <= MBUS_FINISH;
-//						end
-//		
-//						//CTRL: A11100, A11200
-//						else if (M68K_A[23:8] == 16'hA111 || M68K_A[23:8] == 16'hA112) begin
-//							CTRL_SEL <= 1;
-//							M68K_MBUS_DTACK_N <= 0;
-//							mstate <= MBUS_FINISH;
-//						end
-//		
-//						//Unknown: A11300
-//						else if (M68K_A[23:8] == 16'hA113) begin
-//							M68K_MBUS_DTACK_N <= 0;
-//							mstate <= MBUS_FINISH;
-//						end
-//		
-//						//FDC: A120XX
-//						else if (M68K_A[23:8] == 16'hA120) begin
-//							FDC_SEL <= 1;
-//							mstate <= MBUS_FDC_READ;
-//						end
-//		
-//						//TIME: A130XX
-//						else if (M68K_A[23:8] == 16'hA130) begin
-//							TIME_SEL <= 1;
-//							mstate <= MBUS_TIME_READ;
-//						end
-//					
-//						//TMSS: A140XX
-//						else if (M68K_A[23:8] == 16'hA140) begin
-//							M68K_MBUS_DTACK_N <= 0;
-//							mstate <= MBUS_FINISH;
-//						end
-//						
-//						else begin
-//							mstate <= MBUS_NOT_USED;
-//						end
-//					end
-//	
-//					//VDP: C00000-C0001F (+mirrors)
-//					else if (M68K_A[23:21] == 3'b110 && !M68K_A[18:16] && !M68K_A[7:5]) begin
-//						VDP_SEL <= 1;
-//						if (rfs_rom_pend && !M68K_RNW) rfs_rom_pend <= 0;
-//						if (rfs_ram_pend && !M68K_RNW) rfs_ram_pend <= 0;
-//						mstate <= MBUS_VDP_READ;
-//					end
-//	
-//					//RAM: E00000-FFFFFF
-//					else if (&M68K_A[23:21]) begin
-//						RAM_SEL <= 1;
-//						mstate <= MBUS_RAM_WAIT;
-//						cycle_cnt <= rfs_ram_pend ? 2'd3 : 2'd0;
-//					end
-//					
-//					else  begin
-//						M68K_MBUS_DTACK_N <= 0;
-//						mstate <= MBUS_FINISH;
-//					end
+					DBG_HOOK2 <= '0;
 				end
 				else if (VBUS_SEL && VDP_MBUS_DTACK_N) begin
 					msrc <= MSRC_VDP;
@@ -874,20 +771,15 @@ always @(posedge MCLK) begin
 					MBUS_ASEL_N <= VBUS_A[23];
 					
 					case (VBUS_A[23:20])
-						//ROM: 000000-3FFFFF
-						4'h0,4'h1,4'h2,4'h3: begin
+						//CART: 000000-3FFFFF,400000-7FFFFF
+						4'h0,4'h1,4'h2,4'h3,4'h4,4'h5,4'h6,4'h7: begin
 							ROM_SEL <= 1;
-							mstate <= MBUS_ROM_WAIT;
-							cycle_cnt <= rfs_rom_pend ? 2'd2 : 2'd0;
+							mstate <= MBUS_ROM_REFRESH;
+							if (!rfs_rom_delay && rfs_rom_pend) rfs_rom_delay <= 2'd2;
+							rfs_rom_pend <= 0;
 						end
 						
-						//400000-7FFFFF
-						4'h4,4'h5,4'h6,4'h7: begin
-							VDP_MBUS_DTACK_N <= 0;
-							mstate <= MBUS_FINISH;
-						end
-						
-						//32X: 800000-9FFFFF (DTACK area)
+						//800000-9FFFFF (DTACK area)
 						4'h8,4'h9: begin
 							mstate <= MBUS_NOT_USED;
 						end
@@ -901,42 +793,14 @@ always @(posedge MCLK) begin
 						//RAM: E00000-FFFFFF
 						4'hE,4'hF: begin
 							RAM_SEL <= 1;
-							mstate <= MBUS_RAM_WAIT;
+							mstate <= MBUS_RAM_READ;
 						end
 						
 						default:;
 					endcase
-					
-//					//ROM: 000000-3FFFFF
-//					if (!VBUS_A[23:22]) begin
-//						ROM_SEL <= 1;
-//						mstate <= MBUS_ROM_READ;
-//					end
-//						
-//					//400000-7FFFFF
-//					else if (VBUS_A[23:22] == 2'b01) begin
-//						VDP_MBUS_DTACK_N <= 0;
-//						mstate <= MBUS_FINISH;
-//					end
-//						
-//					//DTACK area
-//					//32X: 800000-9FFFFF
-//					else if (VBUS_A[23:21] == 3'b100) begin
-//						mstate <= MBUS_NOT_USED;
-//					end
-//
-//					//RAM: E00000-FFFFFF
-//					else if (&VBUS_A[23:21]) begin
-//						RAM_SEL <= 1;
-//						mstate <= MBUS_RAM_WAIT;
-//					end
-//					
-//					else  begin
-//						VDP_MBUS_DTACK_N <= 0;
-//						mstate <= MBUS_FINISH;
-//					end
+					DBG_HOOK2 <= '0;
 				end
-				else if (Z80_IO && !Z80_ZBUS && Z80_MBUS_DTACK_N && !Z80_BGACK_N && Z80_BR_N) begin
+				else if (Z80_IO && !Z80_ZBUS && Z80_MBUS_DTACK_N && !Z80_AS_N/*!Z80_BGACK_N && Z80_BR_N*/) begin
 					msrc <= MSRC_Z80;
 					MBUS_A <= Z80_A[15] ? {BAR[23:15],Z80_A[14:1]} : {16'hC000, Z80_A[7:1]};
 					MBUS_DO <= {Z80_DO,Z80_DO};
@@ -948,21 +812,15 @@ always @(posedge MCLK) begin
 					
 					if (Z80_A[15]) begin
 						case (BAR[23:20])
-							//ROM: 000000-3FFFFF
-							4'h0,4'h1,4'h2,4'h3: begin
+							//CART: 000000-3FFFFF,400000-7FFFFF
+							4'h0,4'h1,4'h2,4'h3,4'h4,4'h5,4'h6,4'h7: begin
 								ROM_SEL <= 1;
-								mstate <= /*rfs_rom_pend ? MBUS_ROM_REFRESH :*/ MBUS_ROM_READ;
+								mstate <= MBUS_ROM_READ;
+								if (!rfs_rom_delay && rfs_rom_pend) rfs_rom_delay <= 2'd2;
 								rfs_rom_pend <= 0;
-								cycle_cnt <= rfs_rom_pend ? 2'd2 : 2'd0;
 							end
 							
-							//400000-7FFFFF
-							4'h4,4'h5,4'h6,4'h7: begin
-								Z80_MBUS_DTACK_N <= 0;
-								mstate <= MBUS_FINISH;
-							end
-							
-							//32X: 800000-9FFFFF (DTACK area)
+							//800000-9FFFFF
 							4'h8,4'h9: begin
 								mstate <= MBUS_NOT_USED;
 							end
@@ -977,8 +835,8 @@ always @(posedge MCLK) begin
 								//VDP: C00000-C0001F (+mirrors)
 								if (BAR[23:21] == 3'b110 && !BAR[18:16] && !Z80_A[7:5]) begin
 									VDP_SEL <= 1;
-									if (rfs_rom_pend && !Z80_WR_N) rfs_rom_pend <= 0;
-									if (rfs_ram_pend && !Z80_WR_N) rfs_ram_pend <= 0;
+//									if (rfs_rom_pend && !Z80_WR_N) rfs_rom_pend <= 0;
+//									if (rfs_ram_pend && !Z80_WR_N) rfs_ram_pend <= 0;
 									mstate <= MBUS_VDP_READ;
 								end
 								
@@ -990,9 +848,9 @@ always @(posedge MCLK) begin
 							//RAM: E00000-FFFFFF
 							4'hE,4'hF: begin
 								RAM_SEL <= 1;
-								mstate <= /*rfs_ram_pend ? MBUS_RAM_REFRESH :*/ MBUS_RAM_WAIT;
+								mstate <= MBUS_RAM_REFRESH;
+								if (!rfs_ram_delay && rfs_ram_pend) rfs_ram_delay <= 2'd3;
 								rfs_ram_pend <= 0;
-								cycle_cnt <= rfs_ram_pend ? 2'd3 : 2'd0;
 							end
 							
 							default:;
@@ -1000,66 +858,20 @@ always @(posedge MCLK) begin
 					end 
 					
 					//VDP: C00000-C000FF (+mirrors)
-					else if (Z80_A[15:8] == 8'h7F /*&& !Z80_A[7:5]*/) begin
+					else if (Z80_A[15:8] == 8'h7F) begin
 						VDP_SEL <= 1;
-						if (rfs_rom_pend && !Z80_WR_N) rfs_rom_pend <= 0;
-						if (rfs_ram_pend && !Z80_WR_N) rfs_ram_pend <= 0;
-						mstate <= MBUS_VDP_READ;
-					end
-					
-//					//ROM: 000000-3FFFFF
-//					if (BAR[23:22] == 2'b00 && Z80_A[15]) begin
-//						ROM_SEL <= 1;
-//						mstate <= /*rfs_rom_pend ? MBUS_ROM_REFRESH :*/ MBUS_ROM_READ;
-//						rfs_rom_pend <= 0;
-//						cycle_cnt <= rfs_rom_pend ? 2'd2 : 2'd0;
-//					end
-//						
-//					//400000-7FFFFF
-//					else if (BAR[23:22] == 2'b01 && Z80_A[15]) begin
-//						Z80_MBUS_DTACK_N <= 0;
-//						mstate <= MBUS_FINISH;
-//					end
-//						
-//					//DTACK area
-//					//32X: 800000-9FFFFF
-//					else if (BAR[23:21] == 3'b100 && Z80_A[15]) begin
-//						mstate <= MBUS_NOT_USED;
-//					end
-//					
-//					//A00000-BFFFFF
-//					else if (BAR[23:21] == 3'b101 && Z80_A[15]) begin
-//						mstate <= MBUS_NOT_USED;
-//					end
-//	
-//					//VDP: C00000-C0001F (+mirrors)
-//					else if ((BAR[23:21] == 3'b110 && !BAR[18:16] && Z80_A[15] && !Z80_A[7:5]) || (Z80_A[15:8] == 8'h7F && !Z80_A[7:5])) begin
-//						VDP_SEL <= 1;
 //						if (rfs_rom_pend && !Z80_WR_N) rfs_rom_pend <= 0;
 //						if (rfs_ram_pend && !Z80_WR_N) rfs_ram_pend <= 0;
-//						mstate <= MBUS_VDP_READ;
-//					end
-//	
-//					//RAM: E00000-FFFFFF
-//					else if (&BAR[23:21] && Z80_A[15]) begin
-//						RAM_SEL <= 1;
-//						mstate <= /*rfs_ram_pend ? MBUS_RAM_REFRESH :*/ MBUS_RAM_WAIT;
-//						rfs_ram_pend <= 0;
-//						cycle_cnt <= rfs_ram_pend ? 2'd3 : 2'd0;
-//					end
-//					
-//					else  begin
-//						Z80_MBUS_DTACK_N <= 0;
-//						mstate <= MBUS_FINISH;
-//					end
+						mstate <= MBUS_VDP_READ;
+					end
+					DBG_HOOK2 <= '0;
 				end
-				end
+			end
 			end
 
 		MBUS_ZBUS_READ:
-			if (!MBUS_ZBUS_DTACK_N) begin
-				M68K_MBUS_DTACK_N <= ~(msrc == MSRC_M68K);
-				VDP_MBUS_DTACK_N <= ~(msrc == MSRC_VDP);
+			if (!zbus_delay && !MBUS_ZBUS_DTACK_N && M68K_CLKENp) begin
+				M68K_MBUS_DTACK_N <= 0;
 				mstate <= MBUS_FINISH;
 			end
 		
@@ -1069,7 +881,7 @@ always @(posedge MCLK) begin
 			end
 
 		MBUS_RAM_REFRESH: begin
-				if (!cycle_cnt && M68K_CLKENp) begin
+				if (!rfs_ram_delay && M68K_CLKENp) begin
 					mstate <= MBUS_RAM_READ;
 				end
 			end
@@ -1078,7 +890,7 @@ always @(posedge MCLK) begin
 				M68K_MBUS_DTACK_N <= ~(msrc == MSRC_M68K);
 				VDP_MBUS_DTACK_N <= ~(msrc == MSRC_VDP);
 				Z80_MBUS_DTACK_N <= ~(msrc == MSRC_Z80);
-				if (msrc == MSRC_M68K && MBUS_RNW) OPEN_BUS <= ram68k_q;
+				if (msrc == MSRC_M68K && MBUS_RNW) OPEN_BUS <= WRAM_Q;
 				mstate <= MBUS_FINISH;
 				if (MBUS_A == 24'hFFE03C>>1 && !MBUS_RNW) DBG_HOOK <= MBUS_DO;
 			end
@@ -1092,20 +904,18 @@ always @(posedge MCLK) begin
 //			end
 			
 		MBUS_ROM_WAIT: begin
-//			if (!RAM_RDY || !DTACK_N) begin
-				mstate <= rfs_rom_pend ? MBUS_ROM_REFRESH : MBUS_ROM_READ;
-				if (rfs_rom_pend) rfs_rom_pend <= 0;
-//			end
+			mstate <= rfs_rom_pend ? MBUS_ROM_REFRESH : MBUS_ROM_READ;
+			if (rfs_rom_pend) rfs_rom_pend <= 0;
 		end
 		
 		MBUS_ROM_REFRESH: begin
-			if (!cycle_cnt && M68K_CLKENp) begin
+			if (!rfs_rom_delay && M68K_CLKENp) begin
 				mstate <= MBUS_ROM_READ;
 			end
 		end
 		
 		MBUS_ROM_READ: begin
-			if (RAM_RDY || !DTACK_N) begin
+			if (MEM_RDY || !DTACK_N) begin
 				M68K_MBUS_DTACK_N <= ~(msrc == MSRC_M68K);
 				VDP_MBUS_DTACK_N <= ~(msrc == MSRC_VDP);
 				Z80_MBUS_DTACK_N <= ~(msrc == MSRC_Z80);
@@ -1150,7 +960,7 @@ always @(posedge MCLK) begin
 					Z80_MBUS_DTACK_N <= ~(msrc == MSRC_Z80);
 					mstate <= MBUS_FINISH;
 				end
-				DBG_HOOK2 <= DBG_HOOK2 + 8'd1;
+//				DBG_HOOK2 <= DBG_HOOK2 + 8'd1;
 			end
 			
 		MBUS_FINISH:
@@ -1179,15 +989,16 @@ always @(posedge MCLK) begin
 					if (msrc == MSRC_M68K) begin
 						OPEN_BUS <= MBUS_DI;
 					end
-					DBG_HOOK2 <= '0;
+//					DBG_HOOK2 <= '0;
 				end
+				DBG_HOOK2 <= DBG_HOOK2 + 8'd1;
 			end
 		endcase;
 	end
 end
 
-assign MBUS_DI = ROM_SEL ? VDI :
-					  RAM_SEL ? ram68k_q :
+assign MBUS_DI = //ROM_SEL ? VDI :
+					  RAM_SEL ? WRAM_Q :
 					  VDP_SEL ? (MBUS_A[4:2] == 1 ? {OPEN_BUS[15:10],VDP_DO[9:0]} : VDP_DO) :
 					  ZBUS_SEL ? (!Z80_BUSRQ_N ? {MBUS_ZBUS_D, MBUS_ZBUS_D} : OPEN_BUS) :
 					  CTRL_SEL ? CTRL_DO :
@@ -1202,18 +1013,16 @@ assign UDS_N = MBUS_UDS_N;
 assign AS_N = MBUS_AS_N;
 assign ASEL_N = MBUS_ASEL_N;										//000000-7FFFFF 68K/VDP/Z80
 assign TIME_N = ~TIME_SEL;											//A13000-A130FF
-assign FDC_N =  ~FDC_SEL;											//A12000-A120FF 
+assign FDC_N = ~FDC_SEL;											//A12000-A120FF 
 assign VCLK_CE = M68K_CLKENn;
 
-assign CE0_N  = ~(MBUS_A[23:22] == {1'b0, CART_N     }) | MBUS_ASEL_N;	//000000-3FFFFF /CART=0 or 400000-7FFFFF /CART=1
-assign ROM_N  = ~(MBUS_A[23:21] == {1'b0,~CART_N,1'b0}) | MBUS_ASEL_N;	//400000-5FFFFF /CART=0 or 000000-1FFFFF /CART=1
-assign RAS2_N = ~(MBUS_A[23:21] == {1'b0,~CART_N,1'b1}) | MBUS_ASEL_N;	//600000-7FFFFF /CART=0 or 200000-3FFFFF /CART=1 (pulse in real)
+assign CE0_N  = ~(MBUS_A[23:22] == {1'b0, CART_N     });	//000000-3FFFFF /CART=0 or 400000-7FFFFF /CART=1
+assign ROM_N  = ~(MBUS_A[23:21] == {1'b0,~CART_N,1'b0});	//400000-5FFFFF /CART=0 or 000000-1FFFFF /CART=1
+assign RAS2_N = ~(MBUS_A[23:21] == {1'b0,~CART_N,1'b1});	//600000-7FFFFF /CART=0 or 200000-3FFFFF /CART=1 (pulse in real)
 assign CAS2_N = ~MBUS_RNW | MBUS_AS_N;							//000000-FFFFFF 
 assign CAS0_N = ~MBUS_RNW | MBUS_AS_N;							//000000-FFFFFF 
 assign LWR_N  =  MBUS_RNW | MBUS_LDS_N;						//000000-FFFFFF 
 assign UWR_N  =  MBUS_RNW | MBUS_UDS_N;						//000000-FFFFFF 
-
-assign RAM_CE_N = ~RAM_SEL;
 
 assign DBG_MBUS_A = {MBUS_A,1'b0};
 assign DBG_M68K_A = {M68K_A,1'b0};
@@ -1237,18 +1046,18 @@ wire        Z80_IO = ~Z80_MREQ_N & (~Z80_RD_N | ~Z80_WR_N);
 //wire        Z80_IO_PRE = ~Z80_MREQ_N & Z80_RFSH_N;
 wire  [7:0] Z80_MBUS_D = Z80_A[0] ? MBUS_DI[7:0] : MBUS_DI[15:8];
 
-T80s #(.T2Write(1)) Z80
-//T80pa Z80
+//T80s #(.T2Write(1)) Z80
+T80pa Z80
 (
 	.RESET_n(Z80_RESET_N),
 	.CLK(MCLK),
-//	.CEN_p(Z80_CLKENp),
-//	.CEN_n(Z80_CLKENn),
-	.CEN(Z80_CLKENn),
+	.CEN_p(Z80_CLKENp),
+	.CEN_n(Z80_CLKENn),
+//	.CEN(Z80_CLKENn),
 	.BUSRQ_n(Z80_BUSRQ_N),
 	.BUSAK_n(Z80_BUSAK_N),
 	.RFSH_n(Z80_RFSH_N),
-	.WAIT_n(~Z80_MBUS_DTACK_N | ~Z80_ZBUS_DTACK_N | ~Z80_IO),//Z80_WAIT_N
+	.WAIT_n(Z80_WAIT_N/*~Z80_MBUS_DTACK_N | ~Z80_ZBUS_DTACK_N | ~Z80_IO*/),//Z80_WAIT_N
 	.INT_n(Z80_INT_N),
 	.MREQ_n(Z80_MREQ_N),
 	.IORQ_n(Z80_IORQ_N),
@@ -1259,17 +1068,6 @@ T80s #(.T2Write(1)) Z80
 	.DO(Z80_DO)
 );
 
-//always @(posedge MCLK) begin
-//	if (reset) begin
-//		Z80_WAIT_N <= 1;
-//	end
-//	else begin
-//		if (Z80_WAIT_N && !Z80_MREQ_N && Z80_RFSH_N && !Z80_ZBUS && Z80_MBUS_DTACK_N)
-//			Z80_WAIT_N <= 0;
-//		else if (!Z80_WAIT_N && !Z80_MBUS_DTACK_N && M68K_CLKENp)
-//			Z80_WAIT_N <= 1;
-//	end
-//end
 
 wire        CTRL_F  = (MBUS_A[11:8] == 1) ? Z80_BUSAK_N : (MBUS_A[11:8] == 2) ? Z80_RESET_N : OPEN_BUS[8];
 wire [15:0] CTRL_DO = {OPEN_BUS[15:9], CTRL_F, OPEN_BUS[7:0]};
@@ -1309,11 +1107,12 @@ reg        Z80_ZBUS_DTACK_N;
 
 reg        Z80_BR_N;
 reg        Z80_BGACK_N;
+reg        Z80_AS_N;
 
 wire       Z80_ZBUS_SEL = Z80_ZBUS & Z80_IO;
 wire       ZBUS_FREE = ~Z80_BUSRQ_N & Z80_RESET_N;
 
-wire       Z80_MBUS_SEL = Z80_IO & ~Z80_ZBUS;
+wire       Z80_MBUS_SEL = /*Z80_IO*/~Z80_MREQ_N & ~Z80_ZBUS;
 
 // RAM 0000-1FFF (2000-3FFF)
 wire ZRAM_SEL = ~ZBUS_A[14];
@@ -1332,6 +1131,7 @@ always @(posedge MCLK) begin
 	reg [1:0] zstate;
 	reg [1:0] zsrc;
 	reg Z80_BGACK_DIS, Z80_BGACK_DIS2;
+	reg Z80_WAIT_DELAY, Z80_AS_DELAY;
 
 	localparam 	ZSRC_MBUS = 0,
 					ZSRC_Z80  = 1;
@@ -1349,8 +1149,14 @@ always @(posedge MCLK) begin
 		
 		Z80_BR_N <= 1;
 		Z80_BGACK_N <= 1;
+		Z80_AS_N <= 1;
+		Z80_WAIT_N <= 1;
 		Z80_BGACK_DIS <= 0;
 		Z80_BGACK_DIS2 <= 0;
+		Z80_AS_DELAY <= 0;
+		Z80_WAIT_DELAY <= 0;
+		
+		DBG_Z80_HOOK <= 8'd255;
 	end
 	else begin
 		if (~ZBUS_SEL)     MBUS_ZBUS_DTACK_N <= 1;
@@ -1396,24 +1202,45 @@ always @(posedge MCLK) begin
 		endcase
 		
 		
+		if (DBG_Z80_HOOK < 254) DBG_Z80_HOOK <= DBG_Z80_HOOK + 1;
+		
 		if (Z80_MBUS_SEL && Z80_BR_N && Z80_BGACK_N && VBUS_BR_N && VBUS_BGACK_N && M68K_CLKENp) begin
 			Z80_BR_N <= 0;
 		end
 		else if (!Z80_BR_N && !M68K_BG_N && VBUS_BR_N && VBUS_BGACK_N && M68K_AS_N && M68K_CLKENn) begin
 			Z80_BGACK_N <= 0;
+			DBG_Z80_HOOK <= 8'd0;
 		end
-		else if (!Z80_BGACK_N && !Z80_BR_N && !M68K_BG_N && M68K_CLKENp) begin
+		else if (!Z80_BGACK_N && !Z80_BR_N && Z80_AS_N && !M68K_BG_N && M68K_CLKENp) begin
 			Z80_BR_N <= 1;
 		end
-		else if (!Z80_BGACK_DIS2 && !Z80_BGACK_N && Z80_BR_N && !Z80_MBUS_SEL && M68K_CLKENn) begin
-			Z80_BGACK_DIS <= 1;
-			Z80_BGACK_DIS2 <= Z80_BGACK_DIS;
+		else if (!Z80_BGACK_N && Z80_BR_N && Z80_AS_N && M68K_CLKENp) begin
+			Z80_AS_N <= 0;
 		end
-		else if (!Z80_BGACK_N && Z80_BGACK_DIS2 && M68K_CLKENn) begin
+		else if (/*!Z80_BGACK_DIS && */!Z80_MBUS_SEL && !Z80_BGACK_N && Z80_BR_N && !Z80_AS_N && M68K_CLKENp) begin
+			Z80_AS_DELAY <= ~Z80_AS_DELAY;
+			if (Z80_AS_DELAY) begin
+			Z80_AS_N <= 1;
+//			Z80_BGACK_DIS <= 1;
+			end
+		end
+		else if (!Z80_BGACK_N && Z80_BR_N && Z80_AS_N && !Z80_MBUS_SEL /*&& Z80_BGACK_DIS*/ && M68K_CLKENp) begin
 			Z80_BGACK_N <= 1;
-			Z80_BGACK_DIS <= 0;
-			Z80_BGACK_DIS2 <= 0;
+//			Z80_BGACK_DIS <= 0;
+			DBG_Z80_HOOK <= 8'd255;
 		end
+		
+		if (Z80_MBUS_SEL && Z80_MBUS_DTACK_N && Z80_BGACK_N && Z80_WAIT_N) begin
+			Z80_WAIT_N <= 0;
+		end
+		else if (!Z80_BGACK_N && !Z80_AS_N && !Z80_WAIT_N && !Z80_WAIT_DELAY && M68K_CLKENp) begin
+			Z80_WAIT_DELAY <= 1;
+		end
+		else if (!Z80_BGACK_N && !Z80_WAIT_N && Z80_WAIT_DELAY && M68K_CLKENp) begin
+			Z80_WAIT_N <= 1;
+			Z80_WAIT_DELAY <= 0;
+		end
+		
 	end
 end
 

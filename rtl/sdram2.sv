@@ -98,7 +98,7 @@ localparam [9:0] RFS_CNT = 766;
 
 // access manager
 always @(posedge clk) begin
-	reg  [9:0] rfs_timer = 0;
+//	reg  [9:0] rfs_timer = 0;
 	reg  [2:0] old_rd, old_wr;
 	reg        rfs_pend = 0;
 	reg [15:0] dout;
@@ -111,7 +111,7 @@ always @(posedge clk) begin
 
 	if(state == STATE_IDLE && mode == MODE_NORMAL) begin
 		if (rfs_pend) begin
-			rfs_timer <= RFS_CNT;
+//			rfs_timer <= RFS_CNT;
 			rfs_pend <= 0;
 			active <= 0;
 			we <= 0;

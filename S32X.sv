@@ -528,8 +528,7 @@ gen gen
 
 	.OBJ_LIMIT_HIGH(status[31]),
 
-	.RAM_CE_N(GEN_RAM_CE_N),
-	.RAM_RDY(~GEN_MEM_BUSY),
+	.MEM_RDY(~GEN_MEM_BUSY),
 	.GG_RESET(code_download && ioctl_wr && !ioctl_addr),
 	.GG_EN(status[24]),
 	.GG_CODE({~gg_code[95] & gg_code[128], gg_code[127:0]}),
@@ -543,18 +542,10 @@ gen gen
 	.SPR_GRID_EN(VDP_SPR_GRID_EN)
 );
 
-assign GEN_MEM_BUSY = sdr_busy1;
+assign GEN_MEM_BUSY = CART_SRAM_RD || CART_SRAM_WR ? sdr_busy2 : sdr_busy1;
 
-//reg [15:0] GEN_MEM_DO_R;
-//always @(posedge clk_sys) begin
-//	reg old_bsy;
-//	
-//	old_bsy <= GEN_MEM_BUSY;
-//	if(old_bsy & ~GEN_MEM_BUSY) GEN_MEM_DO_R <= GEN_MEM_DO;
-//end
-
-assign GEN_VDI = /*!GEN_RAM_CE_N ? GEN_MEM_DO_R :*/ s32x_rom ? S32X_VDO : CART_VDO;
-assign GEN_DTACK_N = S32X_DTACK_N /*& CART_DTACK_N*/;
+assign GEN_VDI = s32x_rom ? S32X_VDO : CART_VDO;
+assign GEN_DTACK_N = S32X_DTACK_N & CART_DTACK_N;
 
 // 32X
 wire [23:1] S32X_CA;
@@ -665,136 +656,28 @@ S32X #(1,1) S32X
 	.PWM_L(S32X_SL),
 	.PWM_R(S32X_SR)
 );
-assign S32X_CDI = sdr1_do;
+assign S32X_CDI = sdr_do1;
 assign S32X_ROM_WAIT = sdr_busy1;
 
 assign S32X_SDR_DI = ram_do;
 assign S32X_SDR_WAIT = ram_busy;
 
 //Cart
-//reg         SRAM_BANK;
-//reg         EEPROM_BANK;
-////reg   [7:0] BANK_DO;
-//always @(posedge clk_sys) begin
-//	reg old_LWR_N, old_CAS0_N;
-//	reg old_CLWR_N, old_CUWR_N;
-//	
-//	old_LWR_N <= GEN_LWR_N;
-//	old_CLWR_N <= S32X_CLWR_N;
-//	old_CUWR_N <= S32X_CUWR_N;
-//	old_CAS0_N <= GEN_CAS0_N;
-//	if (reset || cart_download) begin
-//		SRAM_BANK <= 0;
-//		EEPROM_BANK <= 0;
-//	end else begin
-//		if (!GEN_TIME_N) begin
-//			if (!GEN_LWR_N && old_LWR_N) begin
-//				SRAM_BANK <= GEN_VDO[0];
-////			end else if (!GEN_CAS0_N && old_CAS0_N) begin
-////				BANK_DO <= '0;
-//			end
-//		end
-//		
-//		if (bank_eeprom_quirk) begin
-//			if ({S32X_CA,1'b0} == 24'h200000 && !S32X_CCE0_N && !S32X_CLWR_N && old_CLWR_N && !S32X_CUWR_N && old_CUWR_N) begin
-//				EEPROM_BANK <= ~S32X_CDO[0];
-//			end
-//		end
-//	end
-//end
-//
-//
-//reg [21:17] REALTEC_BANK;
-//reg   [4:0] REALTEC_MASK;
-//reg         REALTEC_BOOT;
-//always @(posedge clk_sys) begin
-//	reg old_LWR_N, old_CAS0_N;
-//	reg old_CLWR_N, old_CUWR_N;
-//	
-//	old_LWR_N <= GEN_LWR_N;
-//	old_CLWR_N <= S32X_CLWR_N;
-//	old_CUWR_N <= S32X_CUWR_N;
-//	old_CAS0_N <= GEN_CAS0_N;
-//	if (reset || cart_download) begin
-//		REALTEC_BANK <= '0;
-//		REALTEC_MASK <= '0;
-//		REALTEC_BOOT <= realtec_quirk;
-//	end else begin
-//		if (realtec_quirk) begin
-//			if (S32X_CA[23:16] == 8'h40 && !S32X_CA[11:1] && !S32X_CUWR_N && old_CUWR_N) begin
-//				case (S32X_CA[15:12])
-//					4'h0: begin REALTEC_BANK[21:20] <= S32X_CDO[2:1]; REALTEC_BOOT <= ~S32X_CDO[0]; end
-//					4'h2: begin 
-//						case (S32X_CDO[5:0])
-//							6'd0,6'd1:                                      REALTEC_MASK <= 5'b00000;
-//							6'd2:                                           REALTEC_MASK <= 5'b00001;
-//							6'd3,6'd4:                                      REALTEC_MASK <= 5'b00011;
-//							6'd5,6'd6,6'd7,6'd8:                            REALTEC_MASK <= 5'b00111;
-//							6'd9,6'd10,6'd11,6'd12,6'd13,6'd14,6'd15,6'd16: REALTEC_MASK <= 5'b01111;
-//							default:                                        REALTEC_MASK <= 5'b11111;
-//						endcase
-//					end
-//					4'h4: begin REALTEC_BANK[19:17] <= S32X_CDO[2:0]; end
-//				endcase
-//			end
-//		end
-//	end
-//end
-//wire [21:1] REALTEC_A = REALTEC_BOOT ? {9'b000111111,S32X_CA[12:1]} : {(S32X_CA[21:17] & REALTEC_MASK) + REALTEC_BANK,S32X_CA[16:1]};
-//
-//reg   [7:0] SF001_BANK_REG;
-//reg   [7:0] SF002_BANK_REG;
-//always @(posedge clk_sys) begin
-//	reg old_CLWR_N, old_CUWR_N;
-//	
-//	old_CLWR_N <= S32X_CLWR_N;
-//	old_CUWR_N <= S32X_CUWR_N;
-//	if (reset || cart_download) begin
-//		SF001_BANK_REG <= '0;
-//		SF002_BANK_REG <= '0;
-//	end else begin
-//		if (sfmap_quirk && sfmap <= 2'd1) begin	//SF-001
-//			if (!SF001_BANK_REG[5] && S32X_CA[23:16] == 8'h00 && !S32X_CUWR_N && old_CUWR_N) begin
-//				case (S32X_CA[11:8])
-//					4'hE: SF001_BANK_REG <= S32X_CDO[15:8];
-//				endcase
-//			end
-//		end else if (sfmap_quirk && sfmap == 2'd2) begin	//SF-002
-//			if (S32X_CA[23:16] == 8'h00 && !S32X_CLWR_N && old_CLWR_N) begin
-//				SF002_BANK_REG <= S32X_CDO[15:8];
-//			end
-//		end
-//	end
-//end
-//wire [21:1] SF001_A = SF001_BANK_REG[7] && S32X_CA[21:18] == 4'b0000                  ? {4'b1110,S32X_CA[17:1]} : 
-//                      SF001_BANK_REG[7] && S32X_CA[21:18] == 4'b1111 && sfmap == 2'd1 ? {4'b1000,S32X_CA[17:1]} : 
-//						    S32X_CA[21:1];
-//wire [21:1] SF002_A = S32X_CA[23:16] >= 8'h3C ? {5'b10000,S32X_CA[16:1]} :
-//                      S32X_CA[23:16] >= 8'h20 ? {~SF002_BANK_REG[7],S32X_CA[20:1]} : 
-//							 S32X_CA[21:1];
-//wire SF_SRAM_BANK = (S32X_CA[23:20] == 4'h4 && sfmap == 2'd0) || 
-//                    (SF001_BANK_REG[7] && S32X_CA[23:18] == 6'b001111 && sfmap == 2'd1) ||
-//						  (S32X_CA[23:18] == 6'b001111 && sfmap == 2'd2);
-//
-//						  
-//wire [21:1] MAP_A = realtec_quirk                ? REALTEC_A : 
-//                    sfmap_quirk && sfmap <= 2'd1 ? SF001_A : 
-//                    sfmap_quirk && sfmap == 2'd2 ? SF002_A : 
-//						  S32X_CA[21:1];
-//wire [15:0] MAP_DO = eeprom_quirk & {S32X_CA,1'b0} == 24'h200000 ? 16'h0000 : S32X_MEM_DO;
-//
-//assign S32X_CDI = !S32X_CCE0_N || !GEN_RAS2_N ? MAP_DO : 16'h0000;
-//
-//wire SRAM_EN = sfmap_quirk ? SF_SRAM_BANK : ((SRAM_BANK || EEPROM_BANK || ({2'b00,S32X_CA[21:1]} >= rom_sz[23:1] && !noram_quirk)) && S32X_CA[21] && !S32X_CCE0_N);
-
 wire [15:0] CART_VDO;
+wire        CART_DTACK_N;
 
-wire [23:1] CART_MEM_A;
-wire [15:0] CART_MEM_DI;
-wire [15:0] CART_MEM_DO;
-wire        CART_MEM_WRL;
-wire        CART_MEM_WRH;
-wire        CART_MEM_RD;
+wire [23:1] CART_ROM_A;
+wire [15:0] CART_ROM_DI;
+wire [15:0] CART_ROM_DO;
+wire        CART_ROM_WRL;
+wire        CART_ROM_WRH;
+wire        CART_ROM_RD;
+
+wire [14:0] CART_SRAM_A;
+wire  [7:0] CART_SRAM_DI;
+wire  [7:0] CART_SRAM_DO;
+wire        CART_SRAM_WR;
+wire        CART_SRAM_RD;
 CART cart
 (
 	.CLK(clk_sys),
@@ -805,7 +688,7 @@ CART cart
 	.VDI(GEN_VDO),
 	.VDO(CART_VDO),
 	.AS_N(GEN_AS_N),
-	.DTACK_N(),
+	.DTACK_N(CART_DTACK_N),
 	.LWR_N(GEN_LWR_N),
 	.UWR_N(GEN_UWR_N),
 	.CE0_N(GEN_CE0_N),
@@ -814,92 +697,97 @@ CART cart
 	.ASEL_N(GEN_ASEL_N),
 	.TIME_N(GEN_TIME_N),
 	
-	.MEM_A(CART_MEM_A),
-	.MEM_DI(CART_MEM_DI),
-	.MEM_DO(CART_MEM_DO),
-	.MEM_RD(CART_MEM_RD),
-	.MEM_WRL(CART_MEM_WRL),
-	.MEM_WRH(CART_MEM_WRH),
+	.ROM_A(CART_ROM_A),
+	.ROM_DI(CART_ROM_DI),
+	.ROM_DO(CART_ROM_DO),
+	.ROM_RD(CART_ROM_RD),
+	.ROM_WRL(CART_ROM_WRL),
+	.ROM_WRH(CART_ROM_WRH),
+	
+	.SRAM_A(CART_SRAM_A),
+	.SRAM_DI(CART_SRAM_DI),
+	.SRAM_DO(CART_SRAM_DO),
+	.SRAM_RD(CART_SRAM_RD),
+	.SRAM_WR(CART_SRAM_WR),
 	
 	.rom_sz(rom_sz),
-	.eeprom_quirk(eeprom_quirk),
+	.eeprom_map(eeprom_map),
 	.bank_eeprom_quirk(bank_eeprom_quirk),
 	.noram_quirk(noram_quirk),
 	.schan_quirk(schan_quirk),
-	.realtec_quirk(realtec_quirk),
-	.sfmap_quirk(sfmap_quirk),
-	.sfmap(sfmap)
+	.realtec_map(realtec_map),
+	.sf_map(sf_map)
 );
-assign CART_MEM_DI = sdr1_do;
+assign CART_ROM_DI = sdr_do1;
+assign CART_SRAM_DI = CART_SRAM_A[0] ? sdr_do2[7:0] : sdr_do2[15:8];
 
 always @(posedge clk_sys) begin
 	reg old_busy;
 	
-	old_busy <= sdr_busy2;
+	old_busy <= sdr_busy;
 	if(cart_download & ioctl_wr) ioctl_wait <= 1;
-	if(old_busy & ~sdr_busy2) ioctl_wait <= 0;
+	if(old_busy & ~sdr_busy) ioctl_wait <= 0;
 end
 
 reg use_sdr = 0;
 
 wire ram_busy = use_sdr ? sdr_busy : ddr_busy;
-wire [15:0] ram_do = use_sdr ? sdr0_do : ddr_do;
+wire [15:0] ram_do = use_sdr ? sdr_do0 : ddr_do[15:0];
 
 wire ddr_busy;
-wire [15:0] ddr_do;
-assign DDRAM_CLK = clk_ram & ~use_sdr;
+wire [31:0] ddr_do;
 ddram ddram
 (
 	.*,
 
-	.cache_rst(reset),
+	.clk(clk_ram),
 
 	.mem_addr(S32X_SDR_A),
 	.mem_dout(ddr_do),
-	.mem_din(S32X_SDR_DO),
+	.mem_din({16'h0000,S32X_SDR_DO}),
 	.mem_rd(~use_sdr & S32X_SDR_CS & S32X_SDR_RD),
-	.mem_wrl(~use_sdr & S32X_SDR_CS & S32X_SDR_WE[0]),
-	.mem_wrh(~use_sdr & S32X_SDR_CS & S32X_SDR_WE[1]),
+	.mem_wr({2{~use_sdr & S32X_SDR_CS}} & S32X_SDR_WE),
+	.mem_16b(1),
 	.mem_busy(ddr_busy)
 );
 
 
 wire sdr_busy, sdr_busy1, sdr_busy2;
-wire [15:0] sdr0_do,sdr1_do;
+wire [15:0] sdr_do0,sdr_do1,sdr_do2;
 sdram sdram
 (
 	.*,
 	.init(~locked),
 	.clk(clk_ram),
 
-	//MCD: banks 2,3
-	.addr0({7'b1000000,S32X_SDR_A}), // 1000000-103FFFF
-	.din0(S32X_SDR_DO),
-	.dout0(sdr0_do),
+	//
+	.addr0(cart_download ? {1'b0,ioctl_addr[23:1]} : {7'b1000000,S32X_SDR_A}), // 0000000-0FFFFFF
+	.din0(cart_download ? {ioctl_data[7:0],ioctl_data[15:8]} : S32X_SDR_DO),
+	.dout0(sdr_do0),
 	.rd0(use_sdr & S32X_SDR_CS & S32X_SDR_RD),
-	.wrl0(use_sdr & S32X_SDR_CS & S32X_SDR_WE[0]),
-	.wrh0(use_sdr & S32X_SDR_CS & S32X_SDR_WE[1]),
+	.wrl0(cart_download ? ioctl_wait : use_sdr & S32X_SDR_CS & S32X_SDR_WE[0]),
+	.wrh0(cart_download ? ioctl_wait : use_sdr & S32X_SDR_CS & S32X_SDR_WE[1]),
 	.busy0(sdr_busy),
 
-	//Genesis: banks 0,1
-	.addr1(!S32X_CCE0_N ? {1'b0,CART_MEM_A[23:1]} : 	//CART ROM 0000000-03FFFFF,CART RAM 0400000-07FFFFF
-			 !GEN_RAS2_N  ? {5'b10000,GEN_VA[19:1]} 	:	//CD RAM 1000000-10FFFFF
+	//CART ROM, CD PRAM
+	.addr1(((CART_ROM_RD || CART_ROM_WRL || CART_ROM_WRH) && !s32x_rom) ? {1'b0,CART_ROM_A[23:1]} : 	//GEN CART ROM 0000000-0DFFFFF
+			 (!S32X_CCE0_N && s32x_rom)                                   ? {3'b000,S32X_CA[21:1]} :		//32X CART ROM 0000000-03FFFFF
+			 !GEN_RAS2_N                                                  ? {5'b10000,GEN_VA[19:1]} 	:	//CD PRAM 1000000-10FFFFF
 			 '0),
-	.din1(CART_MEM_DO),
-	.dout1(sdr1_do),
-	.rd1( (CART_MEM_RD  & ~s32x_rom) | (~S32X_CCE0_N & ~S32X_CCAS0_N & s32x_rom) | (~GEN_RAS2_N & ~GEN_CAS2_N)),
-	.wrl1((CART_MEM_WRL & ~s32x_rom) | (~S32X_CCE0_N & ~S32X_CLWR_N & s32x_rom)  | (~GEN_RAS2_N & ~GEN_LWR_N)),
-	.wrh1((CART_MEM_WRH & ~s32x_rom) | (~S32X_CCE0_N & ~S32X_CUWR_N & s32x_rom)  | (~GEN_RAS2_N & ~GEN_UWR_N)),
+	.din1(CART_ROM_DO),
+	.dout1(sdr_do1),
+	.rd1( (CART_ROM_RD  & ~s32x_rom) | (~S32X_CCE0_N & ~S32X_CCAS0_N & s32x_rom) | (~GEN_RAS2_N & ~GEN_CAS2_N)),
+	.wrl1((CART_ROM_WRL & ~s32x_rom) | (~S32X_CCE0_N & ~S32X_CLWR_N & s32x_rom)  | (~GEN_RAS2_N & ~GEN_LWR_N)),
+	.wrh1((CART_ROM_WRH & ~s32x_rom) | (~S32X_CCE0_N & ~S32X_CUWR_N & s32x_rom)  | (~GEN_RAS2_N & ~GEN_UWR_N)),
 	.busy1(sdr_busy1),
 
-	//Load/Save: banks 0,1
-	.addr2(cart_download ? (/*rom_cart_mode ?*/ {2'b00,ioctl_addr[22:1]} /*: {6'b011110,ioctl_addr[18:1]}*/) : //ROM  000000-7FFFFF/F00000-F7FFFF
-			 '0),
-	.din2(cart_download ? {ioctl_data[7:0],ioctl_data[15:8]} : '0),
-	.dout2(),
-	.rd2(0),
-	.wrl2(cart_download ? ioctl_wait : 0),
-	.wrh2(cart_download ? ioctl_wait : 0),
+	//CART SRAM, Load/Save
+	.addr2(/*cart_download ? {2'b00,ioctl_addr[22:1]} :*/ {10'b0111000000,CART_SRAM_A[14:1]}),	//CART RAM 0E00000-0FFFFFF
+	.din2(/*cart_download ? {ioctl_data[7:0],ioctl_data[15:8]} :*/ {CART_SRAM_DO,CART_SRAM_DO}),
+	.dout2(sdr_do2),
+	.rd2(CART_SRAM_RD),
+	.wrl2(CART_SRAM_WR &  CART_SRAM_A[0]),
+	.wrh2(CART_SRAM_WR & ~CART_SRAM_A[0]),
 	.busy2(sdr_busy2)
 );
 
@@ -970,23 +858,23 @@ spram #(16,8) vdp_fb0_u
 
 `endif
 
-spram #(16,8) vdp_fb1_l
-(
-	.clock(clk_sys),
-	.address(S32X_FB1_A),
-	.data(S32X_FB1_DO[7:0]),
-	.wren(S32X_FB1_WE[0]),
-	.q(S32X_FB1_DI[7:0])
-);
-
-spram #(16,8) vdp_fb1_u
-(
-	.clock(clk_sys),
-	.address(S32X_FB1_A),
-	.data(S32X_FB1_DO[15:8]),
-	.wren(S32X_FB1_WE[1]),
-	.q(S32X_FB1_DI[15:8])
-);
+//spram #(16,8) vdp_fb1_l
+//(
+//	.clock(clk_sys),
+//	.address(S32X_FB1_A),
+//	.data(S32X_FB1_DO[7:0]),
+//	.wren(S32X_FB1_WE[0]),
+//	.q(S32X_FB1_DI[7:0])
+//);
+//
+//spram #(16,8) vdp_fb1_u
+//(
+//	.clock(clk_sys),
+//	.address(S32X_FB1_A),
+//	.data(S32X_FB1_DO[15:8]),
+//	.wren(S32X_FB1_WE[1]),
+//	.q(S32X_FB1_DI[15:8])
+//);
 
 
 
@@ -1235,18 +1123,16 @@ always @(posedge clk_sys) begin
 end
 
 
-reg sram_quirk = 0;
-reg eeprom_quirk = 0;
+reg [2:0] eeprom_map = 0;
 reg bank_eeprom_quirk = 0;
-reg realtec_quirk = 0;
-reg fifo_quirk = 0;
+reg realtec_map = 0;
+//reg fifo_quirk = 0;
 reg noram_quirk = 0;
 reg pier_quirk = 0;
 reg svp_quirk = 0;
 reg fmbusy_quirk = 0;
 reg schan_quirk = 0;
-reg sfmap_quirk = 0;
-reg [1:0] sfmap = '0;
+reg [2:0] sf_map = '0;
 reg gun_type = 0;
 reg [7:0] gun_sensor_delay = 8'd44;
 always @(posedge clk_sys) begin
@@ -1256,7 +1142,7 @@ always @(posedge clk_sys) begin
 	reg old_download;
 	old_download <= cart_download;
 
-	if(~old_download && cart_download) {fifo_quirk,eeprom_quirk,bank_eeprom_quirk,sram_quirk,realtec_quirk,noram_quirk,pier_quirk,svp_quirk,fmbusy_quirk,schan_quirk,sfmap_quirk,sfmap} <= 0;
+	if(~old_download && cart_download) {/*fifo_quirk,*/eeprom_map,bank_eeprom_quirk,realtec_map,noram_quirk,pier_quirk,svp_quirk,fmbusy_quirk,schan_quirk,sf_map} <= 0;
 
 	if(ioctl_wr & cart_download) begin
 		if(ioctl_addr == 'h180) cart_id[87:72] <= {ioctl_data[7:0],ioctl_data[15:8]};
@@ -1265,21 +1151,30 @@ always @(posedge clk_sys) begin
 		if(ioctl_addr == 'h186) cart_id[39:24] <= {ioctl_data[7:0],ioctl_data[15:8]};
 		if(ioctl_addr == 'h188) cart_id[23:08] <= {ioctl_data[7:0],ioctl_data[15:8]};
 		if(ioctl_addr == 'h18A) cart_id[07:00] <= ioctl_data[7:0];
-		if(ioctl_addr == 'h18C) begin
+		if(ioctl_addr == 'h18E) crc <= {ioctl_data[7:0],ioctl_data[15:8]};
+		if(ioctl_addr == 'h190) begin
 			if     (cart_id[63:0] == "T-081276") bank_eeprom_quirk <= 1; // NFL Quarterback Club
 			else if(cart_id[63:0] == "T-81406 ") bank_eeprom_quirk <= 1; // NBA Jam TE
 			else if(cart_id[63:0] == "T-081586") bank_eeprom_quirk <= 1; // NFL Quarterback Club '96
 			else if(cart_id[63:0] == "T-81576 ") bank_eeprom_quirk <= 1; // College Slam
 			else if(cart_id[63:0] == "T-81476 ") bank_eeprom_quirk <= 1; // Frank Thomas Big Hurt Baseball
-			else if(cart_id[63:0] == "MK-1215 ") eeprom_quirk      <= 1; // Evander Real Deal Holyfield's Boxing
-			else if(cart_id[63:0] == "G-4060  ") eeprom_quirk      <= 1; // Wonder Boy
-			else if(cart_id[63:0] == "00001211") eeprom_quirk      <= 1; // Sports Talk Baseball
-			else if(cart_id[63:0] == "MK-1228 ") eeprom_quirk      <= 1; // Greatest Heavyweights
-			else if(cart_id[63:0] == "G-5538  ") eeprom_quirk      <= 1; // Greatest Heavyweights JP
-			else if(cart_id[63:0] == "00004076") eeprom_quirk      <= 1; // Honoo no Toukyuuji Dodge Danpei
-			else if(cart_id[63:0] == "T-12046 ") eeprom_quirk      <= 1; // Mega Man - The Wily Wars 
-			else if(cart_id[63:0] == "T-12053 ") eeprom_quirk      <= 1; // Rockman Mega World 
-			else if(cart_id[63:0] == "G-4524  ") eeprom_quirk      <= 1; // Ninja Burai Densetsu
+			else if(cart_id[63:0] == "T-50446 ") eeprom_map        <= 3'b001; // John Madden Football 93
+			else if(cart_id[63:0] == "T-50516 ") eeprom_map        <= 3'b001; // John Madden Football 93 Championship Edition
+			else if(cart_id[63:0] == "T-50396 ") eeprom_map        <= 3'b001; // NHLPA Hockey 93
+			else if(cart_id[63:0] == "T-50176 ") eeprom_map        <= 3'b001; // Rings of Power
+			else if(cart_id[63:0] == "T-50606 ") eeprom_map        <= 3'b001; // Bill Walsh College Football
+			else if(cart_id[63:0] == "MK-1215 ") eeprom_map        <= 3'b010; // Evander Real Deal Holyfield's Boxing
+			else if(cart_id[63:0] == "G-4060  ") eeprom_map        <= 3'b010; // Wonder Boy
+			else if(cart_id[63:0] == "00001211") eeprom_map        <= 3'b010; // Sports Talk Baseball
+			else if(cart_id[63:0] == "MK-1228 ") eeprom_map        <= 3'b010; // Greatest Heavyweights
+			else if(cart_id[63:0] == "G-5538  ") eeprom_map        <= 3'b010; // Greatest Heavyweights JP
+			else if(cart_id[63:0] == "00004076") eeprom_map        <= 3'b010; // Honoo no Toukyuuji Dodge Danpei
+			else if(cart_id[63:0] == "T-12046 ") eeprom_map        <= 3'b010; // Mega Man - The Wily Wars 
+			else if(cart_id[63:0] == "T-12053 ") eeprom_map        <= 3'b010; // Rockman Mega World 
+			else if(cart_id[63:0] == "G-4524  ") eeprom_map        <= 3'b010; // Ninja Burai Densetsu
+			else if(cart_id[63:0] == "00054503") eeprom_map        <= 3'b010; // Game Toshokan
+			else if(cart_id[63:0] == "T-81033 ") eeprom_map        <= 3'b011; // NBA Jam (J)
+			else if(cart_id[63:0] == "T-081326") eeprom_map        <= 3'b011; // NBA Jam (U)(E)
 			else if(cart_id[63:0] == "T-113016") noram_quirk       <= 1; // Puggsy fake ram check
 //			else if(cart_id[63:0] == "T-89016 ") fifo_quirk        <= 1; // Clue
 			else if(cart_id[63:0] == "T-574023") pier_quirk        <= 1; // Pier Solar Reprint
@@ -1290,28 +1185,28 @@ always @(posedge clk_sys) begin
 			else if(cart_id[63:0] == "T-25073 ") fmbusy_quirk      <= 1; // Hellfire JP
 			else if(cart_id[63:0] == "MK-1137-") fmbusy_quirk      <= 1; // Hellfire EU
 			else if(cart_id[63:0] == "T-68???-") schan_quirk       <= 1; // Game no Kanzume Otokuyou
-			else if(cart_id[87:40] == "SF-001")  {sfmap,sfmap_quirk} <= {2'd0,1'b1}; // Beggar Prince (Unl)
-			else if(cart_id[87:40] == "SF-002")  {sfmap,sfmap_quirk} <= {2'd2,1'b1}; // Legend of Wukong (Unl)
-			else if(cart_id[87:40] == "SF-004")  {sfmap,sfmap_quirk} <= {2'd3,1'b1}; // Star Odyssey (Unl)
+			else if(cart_id[87:40] == "SF-001")  sf_map            <= {crc == 16'h3E08,2'b01}; // Beggar Prince (Unl), Beggar Prince rev 1 (Unl)
+			else if(cart_id[87:40] == "SF-002")  sf_map            <= {1'b1,2'b10}; // Legend of Wukong (Unl)
+			else if(cart_id[87:40] == "SF-004")  sf_map            <= {1'b1,2'b11}; // Star Odyssey (Unl)
 			
 			// Lightgun device and timing offsets
-			if(cart_id == "MK-1533 ") begin						  // Body Count
+			if(cart_id[63:0] == "MK-1533 ") begin						  // Body Count
 				gun_type  <= 0;
 				gun_sensor_delay <= 8'd100;
 			end
-			else if(cart_id == "T-95096-") begin				  // Lethal Enforcers
+			else if(cart_id[63:0] == "T-95096-") begin				  // Lethal Enforcers
 				gun_type  <= 1;
 				gun_sensor_delay <= 8'd52;
 			end
-			else if(cart_id == "T-95136-") begin				  // Lethal Enforcers II
+			else if(cart_id[63:0] == "T-95136-") begin				  // Lethal Enforcers II
 				gun_type  <= 1;
 				gun_sensor_delay <= 8'd30;
 			end
-			else if(cart_id == "MK-1658 ") begin				  // Menacer 6-in-1
+			else if(cart_id[63:0] == "MK-1658 ") begin				  // Menacer 6-in-1
 				gun_type  <= 0;
 				gun_sensor_delay <= 8'd120;
 			end
-			else if(cart_id == "T-081156") begin				  // T2: The Arcade Game
+			else if(cart_id[63:0] == "T-081156") begin				  // T2: The Arcade Game
 				gun_type  <= 0;
 				gun_sensor_delay <= 8'd126;
 			end
@@ -1321,15 +1216,10 @@ always @(posedge clk_sys) begin
 			end
 		end
 		
-		if(ioctl_addr == 'h18E) crc <= {ioctl_data[7:0],ioctl_data[15:8]};
-		if(ioctl_addr == 'h190) begin
-			if (crc == 16'h3E08) sfmap <= 2'd1; // Beggar Prince rev 1 (Unl)
-		end
-		
 		if(ioctl_addr == 'h7E100) realtec_id[31:16] <= {ioctl_data[7:0],ioctl_data[15:8]};
 		if(ioctl_addr == 'h7E102) realtec_id[15: 0] <= {ioctl_data[7:0],ioctl_data[15:8]};
 		if(ioctl_addr == 'h7E104) begin
-			if (realtec_id == "SEGA") realtec_quirk <= 1; // Earth Defend, Funny World & Balloon Boy
+			if (realtec_id == "SEGA") realtec_map <= 1; // Earth Defend, Funny World & Balloon Boy, Whac-a-Critter
 		end
 	end
 end
