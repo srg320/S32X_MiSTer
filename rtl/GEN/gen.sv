@@ -317,9 +317,9 @@ wire  [7:0] vram_d;
 wire  [7:0] vram_q;
 wire        vram_we;
 
-vdp2 vdp
+VDP vdp
 (
-	.RST_n(~reset),
+	.RST_N(~reset),
 	.CLK(MCLK),
 	.ENABLE(1),
 
@@ -374,6 +374,7 @@ vdp2 vdp
 	
 	.BORDER_EN(BORDER),
 	.VSCROLL_BUG(0),
+	.OBJ_MAX(OBJ_LIMIT_HIGH),
 	
 	.BGA_EN(BGA_EN),
 	.BGB_EN(BGB_EN),
@@ -544,7 +545,7 @@ reg         MBUS_ASEL_N;
 
 reg  [15:0] OPEN_BUS;
 
-reg         ROM_SEL;
+//reg         ROM_SEL;
 reg         RAM_SEL;
 reg         FDC_SEL;
 reg         TIME_SEL;
@@ -589,7 +590,7 @@ always @(posedge MCLK) begin
 		MBUS_LDS_N <= 1;
 		MBUS_RNW <= 1;
 		MBUS_AS_N <= 1;
-		ROM_SEL <= 0;
+//		ROM_SEL <= 0;
 		RAM_SEL <= 0;
 		VDP_SEL <= 0;
 		IO_SEL <= 0;
@@ -654,7 +655,7 @@ always @(posedge MCLK) begin
 					case (M68K_A[23:20])
 						//CART: 000000-3FFFFF,400000-7FFFFF
 						4'h0,4'h1,4'h2,4'h3,4'h4,4'h5,4'h6,4'h7: begin
-							ROM_SEL <= 1;
+//							ROM_SEL <= 1;
 							mstate <= MBUS_ROM_REFRESH;
 							if (!rfs_rom_delay && rfs_rom_pend) rfs_rom_delay <= 2'd2;
 							rfs_rom_pend <= 0;
@@ -773,7 +774,7 @@ always @(posedge MCLK) begin
 					case (VBUS_A[23:20])
 						//CART: 000000-3FFFFF,400000-7FFFFF
 						4'h0,4'h1,4'h2,4'h3,4'h4,4'h5,4'h6,4'h7: begin
-							ROM_SEL <= 1;
+//							ROM_SEL <= 1;
 							mstate <= MBUS_ROM_REFRESH;
 							if (!rfs_rom_delay && rfs_rom_pend) rfs_rom_delay <= 2'd2;
 							rfs_rom_pend <= 0;
@@ -800,7 +801,8 @@ always @(posedge MCLK) begin
 					endcase
 					DBG_HOOK2 <= '0;
 				end
-				else if (Z80_IO && !Z80_ZBUS && Z80_MBUS_DTACK_N && !Z80_AS_N/*!Z80_BGACK_N && Z80_BR_N*/) begin
+//				else if (Z80_IO && !Z80_ZBUS && Z80_MBUS_DTACK_N && !Z80_AS_N) begin
+				else if (Z80_IO && !Z80_ZBUS && Z80_MBUS_DTACK_N && !Z80_BGACK_N && Z80_BR_N) begin
 					msrc <= MSRC_Z80;
 					MBUS_A <= Z80_A[15] ? {BAR[23:15],Z80_A[14:1]} : {16'hC000, Z80_A[7:1]};
 					MBUS_DO <= {Z80_DO,Z80_DO};
@@ -814,7 +816,7 @@ always @(posedge MCLK) begin
 						case (BAR[23:20])
 							//CART: 000000-3FFFFF,400000-7FFFFF
 							4'h0,4'h1,4'h2,4'h3,4'h4,4'h5,4'h6,4'h7: begin
-								ROM_SEL <= 1;
+//								ROM_SEL <= 1;
 								mstate <= MBUS_ROM_READ;
 								if (!rfs_rom_delay && rfs_rom_pend) rfs_rom_delay <= 2'd2;
 								rfs_rom_pend <= 0;
@@ -977,7 +979,7 @@ always @(posedge MCLK) begin
 					MBUS_LDS_N <= 1;
 					MBUS_RNW <= 1;
 					MBUS_ASEL_N <= 1;
-					ROM_SEL <= 0;
+//					ROM_SEL <= 0;
 					RAM_SEL <= 0;
 					VDP_SEL <= 0;
 					ZBUS_SEL <= 0;
@@ -1046,18 +1048,19 @@ wire        Z80_IO = ~Z80_MREQ_N & (~Z80_RD_N | ~Z80_WR_N);
 //wire        Z80_IO_PRE = ~Z80_MREQ_N & Z80_RFSH_N;
 wire  [7:0] Z80_MBUS_D = Z80_A[0] ? MBUS_DI[7:0] : MBUS_DI[15:8];
 
-//T80s #(.T2Write(1)) Z80
-T80pa Z80
+T80s #(.T2Write(1)) Z80
+//T80pa Z80
 (
 	.RESET_n(Z80_RESET_N),
 	.CLK(MCLK),
-	.CEN_p(Z80_CLKENp),
-	.CEN_n(Z80_CLKENn),
-//	.CEN(Z80_CLKENn),
+//	.CEN_p(Z80_CLKENp),
+//	.CEN_n(Z80_CLKENn),
+	.CEN(Z80_CLKENn),
 	.BUSRQ_n(Z80_BUSRQ_N),
 	.BUSAK_n(Z80_BUSAK_N),
 	.RFSH_n(Z80_RFSH_N),
-	.WAIT_n(Z80_WAIT_N/*~Z80_MBUS_DTACK_N | ~Z80_ZBUS_DTACK_N | ~Z80_IO*/),//Z80_WAIT_N
+//	.WAIT_n(Z80_WAIT_N),
+	.WAIT_n(~Z80_MBUS_DTACK_N | ~Z80_ZBUS_DTACK_N | ~Z80_IO),
 	.INT_n(Z80_INT_N),
 	.MREQ_n(Z80_MREQ_N),
 	.IORQ_n(Z80_IORQ_N),
@@ -1112,7 +1115,8 @@ reg        Z80_AS_N;
 wire       Z80_ZBUS_SEL = Z80_ZBUS & Z80_IO;
 wire       ZBUS_FREE = ~Z80_BUSRQ_N & Z80_RESET_N;
 
-wire       Z80_MBUS_SEL = /*Z80_IO*/~Z80_MREQ_N & ~Z80_ZBUS;
+//wire       Z80_MBUS_SEL = ~Z80_MREQ_N & ~Z80_ZBUS;
+wire       Z80_MBUS_SEL = Z80_IO & ~Z80_ZBUS;
 
 // RAM 0000-1FFF (2000-3FFF)
 wire ZRAM_SEL = ~ZBUS_A[14];
@@ -1202,44 +1206,62 @@ always @(posedge MCLK) begin
 		endcase
 		
 		
-		if (DBG_Z80_HOOK < 254) DBG_Z80_HOOK <= DBG_Z80_HOOK + 1;
+//		if (DBG_Z80_HOOK < 254) DBG_Z80_HOOK <= DBG_Z80_HOOK + 1;
+//		
+//		if (Z80_MBUS_SEL && Z80_BR_N && Z80_BGACK_N && VBUS_BR_N && VBUS_BGACK_N && M68K_CLKENp) begin
+//			Z80_BR_N <= 0;
+//		end
+//		else if (!Z80_BR_N && !M68K_BG_N && VBUS_BR_N && VBUS_BGACK_N && M68K_AS_N && M68K_CLKENn) begin
+//			Z80_BGACK_N <= 0;
+//			DBG_Z80_HOOK <= 8'd0;
+//		end
+//		else if (!Z80_BGACK_N && !Z80_BR_N && Z80_AS_N && !M68K_BG_N && M68K_CLKENp) begin
+//			Z80_BR_N <= 1;
+//		end
+//		else if (!Z80_BGACK_N && Z80_BR_N && Z80_AS_N && M68K_CLKENp) begin
+//			Z80_AS_N <= 0;
+//		end
+//		else if (!Z80_MBUS_SEL && !Z80_BGACK_N && Z80_BR_N && !Z80_AS_N && M68K_CLKENp) begin
+//			Z80_AS_DELAY <= ~Z80_AS_DELAY;
+//			if (Z80_AS_DELAY) begin
+//				Z80_AS_N <= 1;
+//			end
+//		end
+//		else if (!Z80_BGACK_N && Z80_BR_N && Z80_AS_N && !Z80_MBUS_SEL && M68K_CLKENp) begin
+//			Z80_BGACK_N <= 1;
+//			DBG_Z80_HOOK <= 8'd255;
+//		end
+//		
+//		if (Z80_MBUS_SEL && Z80_MBUS_DTACK_N && Z80_BGACK_N && Z80_WAIT_N) begin
+//			Z80_WAIT_N <= 0;
+//		end
+//		else if (!Z80_BGACK_N && !Z80_AS_N && !Z80_WAIT_N && !Z80_WAIT_DELAY && M68K_CLKENp) begin
+//			Z80_WAIT_DELAY <= 1;
+//		end
+//		else if (!Z80_BGACK_N && !Z80_WAIT_N && Z80_WAIT_DELAY && M68K_CLKENp) begin
+//			Z80_WAIT_N <= 1;
+//			Z80_WAIT_DELAY <= 0;
+//		end
 		
 		if (Z80_MBUS_SEL && Z80_BR_N && Z80_BGACK_N && VBUS_BR_N && VBUS_BGACK_N && M68K_CLKENp) begin
 			Z80_BR_N <= 0;
 		end
 		else if (!Z80_BR_N && !M68K_BG_N && VBUS_BR_N && VBUS_BGACK_N && M68K_AS_N && M68K_CLKENn) begin
 			Z80_BGACK_N <= 0;
-			DBG_Z80_HOOK <= 8'd0;
 		end
-		else if (!Z80_BGACK_N && !Z80_BR_N && Z80_AS_N && !M68K_BG_N && M68K_CLKENp) begin
+		else if (!Z80_BGACK_N && !Z80_BR_N && !M68K_BG_N && M68K_CLKENp) begin
 			Z80_BR_N <= 1;
 		end
-		else if (!Z80_BGACK_N && Z80_BR_N && Z80_AS_N && M68K_CLKENp) begin
-			Z80_AS_N <= 0;
+		else if (!Z80_BGACK_DIS2 && !Z80_BGACK_N && Z80_BR_N && !Z80_MBUS_SEL && M68K_CLKENn) begin
+			Z80_BGACK_DIS <= 1;
+			Z80_BGACK_DIS2 <= Z80_BGACK_DIS;
 		end
-		else if (/*!Z80_BGACK_DIS && */!Z80_MBUS_SEL && !Z80_BGACK_N && Z80_BR_N && !Z80_AS_N && M68K_CLKENp) begin
-			Z80_AS_DELAY <= ~Z80_AS_DELAY;
-			if (Z80_AS_DELAY) begin
-			Z80_AS_N <= 1;
-//			Z80_BGACK_DIS <= 1;
-			end
-		end
-		else if (!Z80_BGACK_N && Z80_BR_N && Z80_AS_N && !Z80_MBUS_SEL /*&& Z80_BGACK_DIS*/ && M68K_CLKENp) begin
+		else if (!Z80_BGACK_N && Z80_BGACK_DIS2 && M68K_CLKENn) begin
 			Z80_BGACK_N <= 1;
-//			Z80_BGACK_DIS <= 0;
-			DBG_Z80_HOOK <= 8'd255;
+			Z80_BGACK_DIS <= 0;
+			Z80_BGACK_DIS2 <= 0;
 		end
-		
-		if (Z80_MBUS_SEL && Z80_MBUS_DTACK_N && Z80_BGACK_N && Z80_WAIT_N) begin
-			Z80_WAIT_N <= 0;
-		end
-		else if (!Z80_BGACK_N && !Z80_AS_N && !Z80_WAIT_N && !Z80_WAIT_DELAY && M68K_CLKENp) begin
-			Z80_WAIT_DELAY <= 1;
-		end
-		else if (!Z80_BGACK_N && !Z80_WAIT_N && Z80_WAIT_DELAY && M68K_CLKENp) begin
-			Z80_WAIT_N <= 1;
-			Z80_WAIT_DELAY <= 0;
-		end
+
 		
 	end
 end

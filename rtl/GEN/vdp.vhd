@@ -353,7 +353,6 @@ begin
 			CODE <= (others => '0');
 			PENDING <= '0';
 			ADDR <= (others => '0');
-			FF_DTACK_N <= '1';
 			FIFO <= (others => ((others => '0'),(others => '0'),(others => '0')));
 			FIFO_RD_POS <= "00";
 			FIFO_WR_POS <= "00";
@@ -372,6 +371,7 @@ begin
 			DMA_FILL_WE <= '0';
 			DMA_COPY_WE <= '0';
 			FF_VBUS_SEL <= '0';
+			FF_DTACK_N <= '1';
 			FF_BGACK_N <= '1';
 			FF_BR_N <= '1';
 			SOVR_CLR <= '0';

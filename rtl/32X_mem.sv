@@ -67,11 +67,11 @@ module VDPFIFO (
 		scfifo_component.add_ram_output_register = "OFF",
 		scfifo_component.intended_device_family = "Cyclone V",
 		scfifo_component.lpm_hint = "RAM_BLOCK_TYPE=MLAB",
-		scfifo_component.lpm_numwords = 4,
+		scfifo_component.lpm_numwords = 8,
 		scfifo_component.lpm_showahead = "ON",
 		scfifo_component.lpm_type = "scfifo",
 		scfifo_component.lpm_width = 35,
-		scfifo_component.lpm_widthu = 2,
+		scfifo_component.lpm_widthu = 3,
 		scfifo_component.overflow_checking = "ON",
 		scfifo_component.underflow_checking = "ON",
 		scfifo_component.use_eab = "ON";

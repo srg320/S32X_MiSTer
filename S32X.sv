@@ -542,7 +542,9 @@ gen gen
 	.SPR_GRID_EN(VDP_SPR_GRID_EN)
 );
 
-assign GEN_MEM_BUSY = CART_SRAM_RD || CART_SRAM_WR ? sdr_busy2 : sdr_busy1;
+assign GEN_MEM_BUSY = !GEN_RAS2_N                  ? 1'b0 : 
+                      CART_SRAM_RD || CART_SRAM_WR ? sdr_busy2 : 
+							                                sdr_busy1;
 
 assign GEN_VDI = s32x_rom ? S32X_VDO : CART_VDO;
 assign GEN_DTACK_N = S32X_DTACK_N & CART_DTACK_N;
@@ -591,7 +593,7 @@ wire        S32X_YSO_N;
 wire [15:0] S32X_SL;
 wire [15:0] S32X_SR;
 
-S32X #(1,1) S32X
+S32X #(1,1,0) S32X
 (
 	.RST_N(~(reset | cart_download)),
 	.CLK(clk_sys),
@@ -659,8 +661,6 @@ S32X #(1,1) S32X
 assign S32X_CDI = sdr_do1;
 assign S32X_ROM_WAIT = sdr_busy1;
 
-assign S32X_SDR_DI = ram_do;
-assign S32X_SDR_WAIT = ram_busy;
 
 //Cart
 wire [15:0] CART_VDO;
@@ -731,9 +731,6 @@ end
 
 reg use_sdr = 0;
 
-wire ram_busy = use_sdr ? sdr_busy : ddr_busy;
-wire [15:0] ram_do = use_sdr ? sdr_do0 : ddr_do[15:0];
-
 wire ddr_busy;
 wire [31:0] ddr_do;
 ddram ddram
@@ -742,14 +739,17 @@ ddram ddram
 
 	.clk(clk_ram),
 
-	.mem_addr(S32X_SDR_A),
+	.mem_addr({10'b0000000000,S32X_SDR_A}),
 	.mem_dout(ddr_do),
 	.mem_din({16'h0000,S32X_SDR_DO}),
-	.mem_rd(~use_sdr & S32X_SDR_CS & S32X_SDR_RD),
-	.mem_wr({2{~use_sdr & S32X_SDR_CS}} & S32X_SDR_WE),
+	.mem_rd(S32X_SDR_CS & S32X_SDR_RD),
+	.mem_wr({2'b00,{2{S32X_SDR_CS}} & S32X_SDR_WE}),
+	.mem_chan(0),
 	.mem_16b(1),
 	.mem_busy(ddr_busy)
 );
+assign S32X_SDR_DI   = ddr_do[15:0];
+assign S32X_SDR_WAIT = ddr_busy;
 
 
 wire sdr_busy, sdr_busy1, sdr_busy2;
@@ -772,22 +772,21 @@ sdram sdram
 	//CART ROM, CD PRAM
 	.addr1(((CART_ROM_RD || CART_ROM_WRL || CART_ROM_WRH) && !s32x_rom) ? {1'b0,CART_ROM_A[23:1]} : 	//GEN CART ROM 0000000-0DFFFFF
 			 (!S32X_CCE0_N && s32x_rom)                                   ? {3'b000,S32X_CA[21:1]} :		//32X CART ROM 0000000-03FFFFF
-			 !GEN_RAS2_N                                                  ? {5'b10000,GEN_VA[19:1]} 	:	//CD PRAM 1000000-10FFFFF
 			 '0),
 	.din1(CART_ROM_DO),
 	.dout1(sdr_do1),
-	.rd1( (CART_ROM_RD  & ~s32x_rom) | (~S32X_CCE0_N & ~S32X_CCAS0_N & s32x_rom) | (~GEN_RAS2_N & ~GEN_CAS2_N)),
-	.wrl1((CART_ROM_WRL & ~s32x_rom) | (~S32X_CCE0_N & ~S32X_CLWR_N & s32x_rom)  | (~GEN_RAS2_N & ~GEN_LWR_N)),
-	.wrh1((CART_ROM_WRH & ~s32x_rom) | (~S32X_CCE0_N & ~S32X_CUWR_N & s32x_rom)  | (~GEN_RAS2_N & ~GEN_UWR_N)),
+	.rd1( (CART_ROM_RD  & ~s32x_rom) | (~S32X_CCE0_N & ~S32X_CCAS0_N & s32x_rom)),
+	.wrl1((CART_ROM_WRL & ~s32x_rom) | (~S32X_CCE0_N & ~S32X_CLWR_N & s32x_rom)),
+	.wrh1((CART_ROM_WRH & ~s32x_rom) | (~S32X_CCE0_N & ~S32X_CUWR_N & s32x_rom)),
 	.busy1(sdr_busy1),
 
 	//CART SRAM, Load/Save
 	.addr2(/*cart_download ? {2'b00,ioctl_addr[22:1]} :*/ {10'b0111000000,CART_SRAM_A[14:1]}),	//CART RAM 0E00000-0FFFFFF
 	.din2(/*cart_download ? {ioctl_data[7:0],ioctl_data[15:8]} :*/ {CART_SRAM_DO,CART_SRAM_DO}),
 	.dout2(sdr_do2),
-	.rd2(CART_SRAM_RD),
-	.wrl2(CART_SRAM_WR &  CART_SRAM_A[0]),
-	.wrh2(CART_SRAM_WR & ~CART_SRAM_A[0]),
+	.rd2(CART_SRAM_RD & ~s32x_rom),
+	.wrl2(CART_SRAM_WR &  CART_SRAM_A[0] & ~s32x_rom),
+	.wrh2(CART_SRAM_WR & ~CART_SRAM_A[0] & ~s32x_rom),
 	.busy2(sdr_busy2)
 );
 
@@ -858,23 +857,23 @@ spram #(16,8) vdp_fb0_u
 
 `endif
 
-//spram #(16,8) vdp_fb1_l
-//(
-//	.clock(clk_sys),
-//	.address(S32X_FB1_A),
-//	.data(S32X_FB1_DO[7:0]),
-//	.wren(S32X_FB1_WE[0]),
-//	.q(S32X_FB1_DI[7:0])
-//);
-//
-//spram #(16,8) vdp_fb1_u
-//(
-//	.clock(clk_sys),
-//	.address(S32X_FB1_A),
-//	.data(S32X_FB1_DO[15:8]),
-//	.wren(S32X_FB1_WE[1]),
-//	.q(S32X_FB1_DI[15:8])
-//);
+spram #(16,8) vdp_fb1_l
+(
+	.clock(clk_sys),
+	.address(S32X_FB1_A),
+	.data(S32X_FB1_DO[7:0]),
+	.wren(S32X_FB1_WE[0]),
+	.q(S32X_FB1_DI[7:0])
+);
+
+spram #(16,8) vdp_fb1_u
+(
+	.clock(clk_sys),
+	.address(S32X_FB1_A),
+	.data(S32X_FB1_DO[15:8]),
+	.wren(S32X_FB1_WE[1]),
+	.q(S32X_FB1_DI[15:8])
+);
 
 
 
@@ -1342,8 +1341,8 @@ always @(posedge clk_sys) begin
 
 	if((ps2_key[10] != old_state) && pressed) begin
 		casex(code)
-			'h00C: begin VDP_MD_EN <= ~VDP_MD_EN; end 	// F4
-			'h003: begin VDP_32X_EN <= ~VDP_32X_EN; end 	// F5
+			'h00C: begin VDP_32X_EN <= ~VDP_32X_EN; end 	// F4
+			'h003: begin VDP_MD_EN <= ~VDP_MD_EN; end 	// F5
 			'h00B: begin VDP_BGA_EN <= ~VDP_BGA_EN; end 	// F6
 			'h083: begin VDP_BGB_EN <= ~VDP_BGB_EN; end 	// F7
 			'h00A: begin VDP_SPR_EN <= ~VDP_SPR_EN; end 	// F8
