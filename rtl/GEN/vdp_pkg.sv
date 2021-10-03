@@ -186,7 +186,16 @@ package VDP_PKG;
 		ST_EXT     = 9'b010000000,
 		ST_REFRESH = 9'b100000000
 	} Slot_t;
-	typedef Slot_t SlotPipe_t[3];
+	
+	typedef struct packed
+	{
+		bit         PRI;
+		bit [ 1: 0] CP;
+		bit         VF;
+		bit         HF;
+		bit [10: 0] PT;
+	} BGPatterName_t;
+	parameter BGPatterName_t BGPN_NULL = {1'b0,2'b00,1'b0,1'b0,11'h000};
 
 	typedef struct packed
 	{
@@ -195,19 +204,33 @@ package VDP_PKG;
 		bit         PRIO;
 		bit         WIN;
 		bit         VGRID;
-	} BGTileInfo_t;
-	typedef BGTileInfo_t BGTileInfoBuf_t [2];
-	typedef BGTileInfo_t BGTileRender_t [4];
-//	typedef bit [15:0] BGPatterNameInfo_t [2];
+	} BGTile_t;
+	typedef BGTile_t BGTileBuf_t [2];
 	
-//	typedef struct packed
-//	{
-//		bit [ 3: 0] COLOR;
-//		bit [ 1: 0] PAL;
-//		bit         PRIO;
-//		bit         VGRID;
-//	} BGPixInfo_t;
-//	typedef BGPixInfo_t BGPixInfoArray_t [32];
+	
+	typedef struct packed
+	{
+		bit [ 5: 0] UNUSED;
+		bit [ 1: 0] HS;
+		bit [ 1: 0] VS;
+		bit         UNUSED2;
+		bit [ 6: 0] LINK;
+		bit [ 5: 0] UNUSED3;
+		bit [ 9: 0] VP;
+	} ObjCacheInfo_t;
+	
+	typedef struct packed
+	{
+		bit [ 8: 0] HP;
+		bit         PRI;
+		bit [ 1: 0] CP;
+		bit         VF;
+		bit         HF;
+		bit [10: 0] SN;
+		bit [ 1: 0] HS;
+		bit [ 1: 0] VS;
+		bit [ 5: 0] YOFS;
+	} ObjSpriteInfo_t;
 	
 	typedef struct packed
 	{
@@ -218,11 +241,10 @@ package VDP_PKG;
 		bit         EN;
 		bit [ 2: 0] BORD;
 	} ObjRenderInfo_t;
-//	type ObjRenderInfo_t ObjRenderInfoPipe_t [7];
 	
 	typedef enum bit [2:0] {
-		PIX_SHADOW    = 3'b001,
-		PIX_NORMAL    = 3'b010,
+		PIX_NORMAL    = 3'b001,
+		PIX_SHADOW    = 3'b010,
 		PIX_HIGHLIGHT = 3'b100
 	} PixMode_t;
 

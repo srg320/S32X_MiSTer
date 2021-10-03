@@ -20,11 +20,11 @@ module VDP
 
 	output            VINT,
 	output            HINT,
-	input             INTACK,
+	input             INTACK_N,
 	output            Z80_INT_N,
 	output            REFRESH,
 		
-	output     [23:1] VBUS_ADDR,
+	output     [23:1] VBUS_A,
 	input      [15:0] VBUS_DATA,
 	output            VBUS_SEL,
 	input             VBUS_DTACK_N,
@@ -62,15 +62,17 @@ module VDP
 	input       [1:0] BG_GRID_EN,
 	input             SPR_GRID_EN,
 	
-	output            DBG_SLOT_HSCROLL,
-	output            DBG_SLOT_BGAMAP,
-	output            DBG_SLOT_BGACHAR,
-	output            DBG_SLOT_BGBMAP,
-	output            DBG_SLOT_BGBCHAR,
-	output            DBG_SLOT_SPRMAP,
-	output            DBG_SLOT_SPRCHAR,
-	output            DBG_SLOT_EXT,
-	output            DBG_SLOT_REFRESH,
+	output            DBG_SLOT0_EXT,
+	output            DBG_SLOT1_EXT,
+	output            DBG_SLOT2_HSCROLL,
+	output            DBG_SLOT2_BGAMAP,
+	output            DBG_SLOT2_BGACHAR,
+	output            DBG_SLOT2_BGBMAP,
+	output            DBG_SLOT2_BGBCHAR,
+	output            DBG_SLOT2_SPRMAP,
+	output            DBG_SLOT2_SPRCHAR,
+	output            DBG_SLOT2_EXT,
+	output            DBG_SLOT2_REFRESH,
 	output [16:0] DBG_FIFO_ADDR,
 	output [15:0] DBG_FIFO_DATA,
 	output  [3:0] DBG_FIFO_CODE,
@@ -113,20 +115,19 @@ module VDP
 	bit        FF_BGACK_N;
 	bit        FF_BR_N;
 	
-	typedef enum bit [12:0] {
-		DTC_IDLE     = 13'b0000000000001,
-		DTC_FIFO_RD  = 13'b0000000000010,
-		DTC_FIFO_RD2 = 13'b0000000000100,
-		DTC_FIFO_RD3 = 13'b0000000001000,
-		DTC_FIFO_END = 13'b0000000010000,
-		DTC_VRAM_WR  = 13'b0000000100000,
-		DTC_CRAM_WR  = 13'b0000001000000,
-		DTC_VSRAM_WR = 13'b0000010000000,
-		DTC_PRE_RD   = 13'b0000100000000,
-		DTC_VRAM_RD  = 13'b0001000000000,
-		DTC_VRAM8_RD = 13'b0010000000000,
-		DTC_CRAM_RD  = 13'b0100000000000,
-		DTC_VSRAM_RD = 13'b1000000000000
+	typedef enum bit [11:0] {
+		DTC_IDLE        = 12'b000000000001,
+		DTC_FIFO_PRE_RD = 12'b000000000010,
+		DTC_FIFO_RD     = 12'b000000000100,
+		DTC_FIFO_PAUSE  = 12'b000000001000,
+		DTC_VRAM_WR     = 12'b000000010000,
+		DTC_CRAM_WR     = 12'b000000100000,
+		DTC_VSRAM_WR    = 12'b000001000000,
+		DTC_PRE_RD      = 12'b000010000000,
+		DTC_VRAM_RD     = 12'b000100000000,
+		DTC_VRAM8_RD    = 12'b001000000000,
+		DTC_CRAM_RD     = 12'b010000000000,
+		DTC_VSRAM_RD    = 12'b100000000000
 	} dtc_t;
 	dtc_t DTC;
 	bit        DT_RD_PEND;
@@ -134,18 +135,19 @@ module VDP
 	bit  [3:0] DT_RD_CODE;
 	bit [15:0] DT_RD_DATA;
 	
-	typedef enum bit [10:0] {
-		DMA_IDLE         = 11'b00000000001,
-		DMA_FILL_WR      = 11'b00000000010,
-		DMA_FILL_WR2     = 11'b00000000100,
-		DMA_COPY_RD      = 11'b00000001000,
-		DMA_COPY_WR      = 11'b00000010000,
-		DMA_VBUS_WAIT    = 11'b00000100000,
-		DMA_VBUS_REFRESH = 11'b00001000000,
-		DMA_VBUS_SKIP    = 11'b00010000000,
-		DMA_VBUS_RD      = 11'b00100000000,
-		DMA_VBUS_WR      = 11'b01000000000,
-		DMA_VBUS_END     = 11'b10000000000
+	typedef enum bit [11:0] {
+		DMA_IDLE         = 12'b000000000001,
+		DMA_FILL_WR      = 12'b000000000010,
+		DMA_FILL_WR2     = 12'b000000000100,
+		DMA_COPY_RD      = 12'b000000001000,
+		DMA_COPY_WR      = 12'b000000010000,
+		DMA_VBUS_WAIT    = 12'b000000100000,
+		DMA_VBUS_WAIT2   = 12'b000001000000,
+		DMA_VBUS_REFRESH = 12'b000010000000,
+		DMA_VBUS_SKIP    = 12'b000100000000,
+		DMA_VBUS_RD      = 12'b001000000000,
+		DMA_VBUS_WR      = 12'b010000000000,
+		DMA_VBUS_END     = 12'b100000000000
 	} dmac_t;
 	dmac_t DMAC;
 	bit        DMA_FILL;
@@ -167,7 +169,7 @@ module VDP
 	bit [15:0] HV;
 	
 	//Slot
-	SlotPipe_t SLOTS;
+	Slot_t     SLOT_PIPE[3];
 	Slot_t     SLOT;
 	
 	bit [15:0] BG_VRAM_ADDR;
@@ -176,9 +178,6 @@ module VDP
 	bit [10:0] VSCRLB;
 	bit  [8:0] DISP_X;
 	bit [15:0] SPR_VRAM_ADDR;
-	bit  [6:0] OBJ_N;
-	bit  [5:0] OBJC_Y_OFS;
-	bit        OBJ_FIND;
 	bit        DISP_EN_PIPE[6];
 	
 	bit        VINT_FLAG;
@@ -196,6 +195,10 @@ module VDP
 	wire  [3:0] FIFO_CODE = FIFO.ITEMS[FIFO.RD_POS].CODE;
 	wire        FIFO_EMPTY = FIFO.AMOUNT == 3'd0;
 	wire        FIFO_FULL = FIFO.AMOUNT[2];
+	
+	wire [16:0] FIFO_NEXT_ADDR = FIFO.ITEMS[FIFO.RD_POS + 1].ADDR;
+	wire [15:0] FIFO_NEXT_DATA = FIFO.ITEMS[FIFO.RD_POS + 1].DATA;
+	wire        FIFO_PRE_EMPTY = FIFO.AMOUNT == 3'd1;
 	
 	
 	always @(posedge CLK or negedge RST_N) begin
@@ -297,14 +300,14 @@ module VDP
 							
 							if (MR2.DMA && DI[7]) begin
 								if (!DSA[23]) begin
-									if (VCLK_ENp) begin
+//									if (VCLK_ENp) begin
 										if (!DMA_VBUS) begin
 											DMA_VBUS <= 1;
-										end else begin
+										end else if (DMA_VBUS && VCLK_ENp) begin
 											FF_BR_N <= 0;
 											PENDING <= 0;
 										end
-									end
+//									end
 								end else begin
 									if (!DSA[22]) DMA_FILL <= 1;
 									else          DMA_COPY <= 1;
@@ -341,8 +344,8 @@ module VDP
 										5'd16: SS <= DI[7:0] & SS_MASK;
 										5'd17: WHP <= DI[7:0] & WHP_MASK;
 										5'd18: WVP <= DI[7:0] & WVP_MASK;
-										5'd19: DLC[7:0] <= DI[7:0];
-										5'd20: DLC[15:8] <= DI[7:0];
+										5'd19: if (!DMA_FILL) DLC[7:0] <= DI[7:0];
+										5'd20: if (!DMA_FILL) DLC[15:8] <= DI[7:0];
 										5'd21: DSA[7:0] <= DI[7:0];
 										5'd22: DSA[15:8] <= DI[7:0];
 										5'd23: DSA[23:16] <= DI[7:0];
@@ -363,7 +366,6 @@ module VDP
 					end else	begin									// Unused (Lock-up)
 						FF_DTACK_N <= 0;
 					end
-				
 				end else begin										// Read
 					if (A[4:2] == 3'b000) begin				// Data Port C00000-C00002 
 						PENDING <= 0;
@@ -397,7 +399,7 @@ module VDP
 			case (DTC)
 				DTC_IDLE: begin	
 					if (!FIFO_EMPTY && SLOT_CE) begin
-						DTC <= DTC_FIFO_RD2;
+						DTC <= DTC_FIFO_PRE_RD;
 					end else if (DT_RD_PEND && SLOT_CE) begin
 						DT_RD_PEND <= 0;
 						DT_RD_EXEC <= 1;
@@ -405,7 +407,7 @@ module VDP
 					end
 				end
 				
-				DTC_FIFO_RD2: begin	
+				DTC_FIFO_PRE_RD: begin	
 					if (SLOT_CE) begin
 						IO_ADDR <= FIFO_ADDR;
 						IO_DATA <= FIFO_DATA;
@@ -416,57 +418,51 @@ module VDP
 				end
 				
 				DTC_FIFO_RD: begin	
-					case (FIFO_CODE)
-						4'b0001: // VRAM Write
-							if (SLOT == ST_EXT && SLOT_CE) begin
+					if (SLOT == ST_EXT && SLOT_CE) begin	
+						case (FIFO_CODE)
+							4'b0001: begin // VRAM Write
 								if (IO_BYTE != IO_ADDR[0] || MR2.M128K) begin
-									FIFO.RD_POS <= FIFO.RD_POS + 2'd1;
 									FIFO_AMOUNT_DEC = 1;
-									IO_WE <= 0;
-									DTC <= DTC_FIFO_END;
 								end else begin
 									IO_ADDR[0] <= ~IO_ADDR[0];
 									IO_DATA <= {IO_DATA[7:0],IO_DATA[15:8]};
 								end
 							end
-						4'b0011: // CRAM Write
-							if (SLOT == ST_EXT && SLOT_CE) begin
-								FIFO.RD_POS <= FIFO.RD_POS + 2'd1;
+							4'b0011: begin // CRAM Write
 								FIFO_AMOUNT_DEC = 1;
-								IO_WE <= 0;
-								DTC <= DTC_FIFO_RD3;
+								IO_DATA <= FIFO_NEXT_DATA;
 							end
-						4'b0101: // VSRAM Write
-							if (SLOT == ST_EXT && SLOT_CE) begin
-								FIFO.RD_POS <= FIFO.RD_POS + 2'd1;
+							4'b0101: begin // VSRAM Write
 								FIFO_AMOUNT_DEC = 1;
-								IO_WE <= 0;
-								DTC <= DTC_FIFO_RD3;
+								IO_DATA <= FIFO_NEXT_DATA;
 							end
-						default: //invalid target
-							if (SLOT == ST_EXT && SLOT_CE) begin	
-								IO_WE <= 0;
-								FIFO.RD_POS <= FIFO.RD_POS + 2'd1;
+							default: begin //invalid target
 								FIFO_AMOUNT_DEC = 1;
-								DTC <= DTC_FIFO_END;
 							end
-					endcase
+						endcase 
+						
+						if (FIFO_AMOUNT_DEC) begin
+							FIFO.RD_POS <= FIFO.RD_POS + 2'd1;
+							if (IO_WE && !FIFO_PRE_EMPTY) begin
+								IO_ADDR <= FIFO_NEXT_ADDR;
+								IO_DATA <= FIFO_NEXT_DATA;
+								IO_BYTE <= FIFO_NEXT_ADDR[0];
+								IO_WE <= 1;
+								DTC <= DTC_FIFO_RD;
+							end else begin
+								IO_WE <= 0;
+								DTC <= DTC_IDLE;
+							end
+						end
+						if (DMA_FILL_START && !FIFO_PRE_EMPTY) begin
+							DTC <= DTC_FIFO_PAUSE;
+						end
+					end
 				end
 				
-				DTC_FIFO_RD3: begin	
-					IO_DATA <= FIFO_DATA;
-					DTC <= DTC_FIFO_END;
-				end
-				
-				DTC_FIFO_END: begin	
-					if (!FIFO_EMPTY) begin
-						IO_ADDR <= FIFO_ADDR;
-						IO_DATA <= FIFO_DATA;
-						IO_BYTE <= FIFO_ADDR[0];
-						IO_WE <= 1;
+				DTC_FIFO_PAUSE: begin	
+					if (SLOT_CE) begin
 						DTC <= DTC_FIFO_RD;
-					end else begin
-						DTC <= DTC_IDLE;
 					end
 				end
 				
@@ -543,12 +539,13 @@ module VDP
 					if (DMA_VBUS) begin
 						if (!BG_N && !FF_BR_N && FF_DTACK_N) begin
 							FF_DTACK_N <= 0;
-							DMA_VBUS_WC <= 2'b00;
+//							DMA_VBUS_WC <= 2'b00;
 							DMAC <= DMA_VBUS_WAIT;
 						end
 					end else if (DMA_FILL_START && FIFO_EMPTY) begin
+						IO_ADDR <= ADDR;
 						DMA_FILL_WE <= 1;
-						DMAC <= DMA_FILL_WR2;
+						DMAC <= DMA_FILL_WR;
 					end else if (DMA_COPY && FIFO_EMPTY && SLOT_CE) begin
 						DMA_COPY_WE <= 0;
 						IO_ADDR <= {1'b0,DSA[15:0]};
@@ -558,11 +555,19 @@ module VDP
 				
 				DMA_VBUS_WAIT: begin
 					if (!FF_BGACK_N && SLOT_CE) begin
-						DMA_VBUS_WC <= DMA_VBUS_WC + 2'd1;
-						if (DMA_VBUS_WC == 2'd1) begin
-							FF_VBUS_SEL <= 1;
-							DMAC <= DMA_VBUS_RD;
-						end
+//						DMA_VBUS_WC <= DMA_VBUS_WC + 2'd1;
+//						if (DMA_VBUS_WC == 2'd1) begin
+//							FF_VBUS_SEL <= 1;
+//							DMAC <= DMA_VBUS_RD;
+//						end
+						DMAC <= DMA_VBUS_WAIT2;
+					end
+				end
+				
+				DMA_VBUS_WAIT2: begin
+					if (!FF_BGACK_N && SLOT_CE) begin
+						FF_VBUS_SEL <= 1;
+						DMAC <= DMA_VBUS_RD;
 					end
 				end
 				
@@ -622,16 +627,15 @@ module VDP
 				
 				//fill
 				DMA_FILL_WR2: begin
-//					if (FIFO_EMPTY) begin
-						IO_ADDR <= ADDR;
-						DMAC <= DMA_FILL_WR;
-//					end if;
+					IO_ADDR <= ADDR;
+					DMAC <= DMA_FILL_WR;
 				end
 				
 				DMA_FILL_WR: begin
 					if (SLOT == ST_EXT && SLOT_CE) begin
-						if (FIFO_EMPTY) begin
+						if (FIFO_EMPTY || DTC == DTC_FIFO_PAUSE) begin
 							ADDR <= ADDR + AI.INC;
+							IO_ADDR <= IO_ADDR + AI.INC;
 							NEXT_DMA_SRC = DSA[15:0] + AI.INC;
 							DSA[15:0] <= NEXT_DMA_SRC;
 							NEXT_DMA_LEN = DLC - 16'd1;
@@ -644,8 +648,6 @@ module VDP
 							end else begin
 								DMAC <= DMA_FILL_WR2;
 							end
-//						end else begin
-//							DMAC <= DMA_FILL_WR2;
 						end
 					end
 				end
@@ -687,13 +689,26 @@ module VDP
 		end
 	end
 	
+	bit [15:0] OPEN_BUS;
+	always @(posedge CLK or negedge RST_N) begin
+		if (!RST_N) begin
+			OPEN_BUS <= '1;
+		end else begin
+			if (!AS_N) begin
+				if (!RNW) 	
+					OPEN_BUS <= DI;
+				else
+					OPEN_BUS <= DO;
+			end
+		end
+	end
 	
 	wire IN_DMA = DMA_FILL | DMA_COPY | DMA_VBUS;
 	always_comb begin
 		if (A[4:2] == 3'b000)					// Data Port C00000-C00002 
 			DO = DT_RD_DATA;
 		else if (A[4:2] == 3'b001)				// Control Port C00004-C00006 (Read Status Register)
-			DO = {6'b111111,FIFO_EMPTY,FIFO_FULL,VINT_FLAG,SOVR_FLAG,SCOL_FLAG,(FIELD & MR4.LSM[0]),(IN_VBL | ~MR2.DISP),IN_HBL,IN_DMA,PAL};
+			DO = {OPEN_BUS[15:10],FIFO_EMPTY,FIFO_FULL,VINT_FLAG,SOVR_FLAG,SCOL_FLAG,(FIELD & MR4.LSM[0]),(IN_VBL | ~MR2.DISP),IN_HBL,IN_DMA,PAL};
 		else if (A[4:3] == 2'b01)				// HV Counter C00008-C0000A
 			DO = HV;
 		else											// unused, PSG, DBG
@@ -704,7 +719,7 @@ module VDP
 	assign BGACK_N = FF_BGACK_N;
 	assign BR_N = FF_BR_N;
 	
-	assign VBUS_ADDR = DSA[22:0];
+	assign VBUS_A = DSA[22:0];
 	assign VBUS_SEL = FF_VBUS_SEL;
 	
 	assign REFRESH = SLOT == ST_REFRESH && DMA_VBUS;
@@ -992,55 +1007,55 @@ module VDP
 	always_comb begin
 		if (IN_VBL || !MR2.DISP)
 			if (H_CNT[5:1] == 5'b11001)
-				SLOTS[0] = ST_REFRESH;
+				SLOT_PIPE[0] = ST_REFRESH;
 			else
-				SLOTS[0] = ST_EXT;
+				SLOT_PIPE[0] = ST_EXT;
 		else if (H_CNT[8:1] == 8'b11110011)
-			SLOTS[0] <= ST_HSCROLL;
+			SLOT_PIPE[0] <= ST_HSCROLL;
 		else if (H_CNT[8:4] == 5'b11111)
 			case (H_CNT[3:1])
-				3'b000: SLOTS[0] = ST_BGAMAP;
-				3'b001: SLOTS[0] = ST_SPRCHAR;
-				3'b010: SLOTS[0] = ST_BGACHAR;
-				3'b011: SLOTS[0] = ST_BGACHAR;
-				3'b100: SLOTS[0] = ST_BGBMAP;
-				3'b101: SLOTS[0] = ST_SPRCHAR;
-				3'b110: SLOTS[0] = ST_BGBCHAR;
-				3'b111: SLOTS[0] = ST_BGBCHAR;
+				3'b000: SLOT_PIPE[0] = ST_BGAMAP;
+				3'b001: SLOT_PIPE[0] = ST_SPRCHAR;
+				3'b010: SLOT_PIPE[0] = ST_BGACHAR;
+				3'b011: SLOT_PIPE[0] = ST_BGACHAR;
+				3'b100: SLOT_PIPE[0] = ST_BGBMAP;
+				3'b101: SLOT_PIPE[0] = ST_SPRCHAR;
+				3'b110: SLOT_PIPE[0] = ST_BGBCHAR;
+				3'b111: SLOT_PIPE[0] = ST_BGBCHAR;
 			endcase
 		else if ((!H_CNT[8] && !H40) || (H_CNT[8:6] < 3'b101 && H40))
 			case (H_CNT[3:1])
-				3'b000: SLOTS[0] = ST_BGAMAP;
-				3'b001: SLOTS[0] = H_CNT[5:4] == 2'b11 ? ST_REFRESH : ST_EXT;
-				3'b010: SLOTS[0] = ST_BGACHAR;
-				3'b011: SLOTS[0] = ST_BGACHAR;
-				3'b100: SLOTS[0] = ST_BGBMAP;
-				3'b101: SLOTS[0] = ST_SPRMAP;
-				3'b110: SLOTS[0] = ST_BGBCHAR;
-				3'b111: SLOTS[0] = ST_BGBCHAR;
+				3'b000: SLOT_PIPE[0] = ST_BGAMAP;
+				3'b001: SLOT_PIPE[0] = H_CNT[5:4] == 2'b11 ? ST_REFRESH : ST_EXT;
+				3'b010: SLOT_PIPE[0] = ST_BGACHAR;
+				3'b011: SLOT_PIPE[0] = ST_BGACHAR;
+				3'b100: SLOT_PIPE[0] = ST_BGBMAP;
+				3'b101: SLOT_PIPE[0] = ST_SPRMAP;
+				3'b110: SLOT_PIPE[0] = ST_BGBCHAR;
+				3'b111: SLOT_PIPE[0] = ST_BGBCHAR;
 			endcase
 		else if ((H_CNT[8:1] == 8'b10000000 && !H40) || (H_CNT[8:1] == 8'b10000001 && !H40) || 
 				   (H_CNT[8:1] == 8'b10010000 && !H40) || (H_CNT[8:1] == 8'b11110010 && !H40) ||
 				   (H_CNT[8:1] == 8'b10100000 &&  H40) || (H_CNT[8:1] == 8'b10100001 &&  H40) || 
 				   (H_CNT[8:1] == 8'b11100111 &&  H40))
-			SLOTS[0] = ST_EXT;
+			SLOT_PIPE[0] = ST_EXT;
 		else
-			SLOTS[0] = ST_SPRCHAR;
+			SLOT_PIPE[0] = ST_SPRCHAR;
 	end
 
 	always @(posedge CLK or negedge RST_N) begin
 		if (!RST_N) begin
-			SLOTS[1] <= ST_EXT;
-			SLOTS[2] <= ST_EXT;
+			SLOT_PIPE[1] <= ST_EXT;
+			SLOT_PIPE[2] <= ST_EXT;
 		end else begin
 			if (SLOT_CE) begin
-				SLOTS[1] <= SLOTS[0];
-				SLOTS[2] <= SLOTS[1];
+				SLOT_PIPE[1] <= SLOT_PIPE[0];
+				SLOT_PIPE[2] <= SLOT_PIPE[1];
 			end
 		end
 	end
 	
-	assign SLOT = SLOTS[2];
+	assign SLOT = SLOT_PIPE[2];
 	
 	//Rendering
 	bit  [1:0] BYTE_CNT;
@@ -1048,25 +1063,32 @@ module VDP
 	bit  [7:0] VRAM_SDATA_TEMP1;
 	bit  [7:0] VRAM_SDATA_TEMP2;
 	always @(posedge CLK or negedge RST_N) begin
+		bit DIV2;
+		
 		if (!RST_N) begin
 			//VRAM_SDATA_TEMP0 <= '0;
 			//VRAM_SDATA_TEMP1 <= '0;
 			//VRAM_SDATA_TEMP2 <= '0;
+			DIV2 <= 0;
 			BYTE_CNT <= '0;
 		end else begin
 			if (ENABLE) begin
-				if (SC_CE) begin
+				DIV2 <= ~DIV2;
+				
+				if (DIV2) begin
 					case (BYTE_CNT)
 						2'd0:	VRAM_SDATA_TEMP0 <= VRAM_Q;
 						2'd1: VRAM_SDATA_TEMP1 <= VRAM_Q;
 						2'd2: VRAM_SDATA_TEMP2 <= VRAM_Q;
 						default:;
 					endcase
-					BYTE_CNT <= BYTE_CNT + 2'd1;
+					if (BYTE_CNT != 2'd3) BYTE_CNT <= BYTE_CNT + 2'd1;
 				end
 				
-				if (SLOT_CE)
+				if (DCLK_CE) begin
 					BYTE_CNT <= 2'd0;
+					DIV2 <= 0;
+				end
 			end
 		end
 	end
@@ -1127,7 +1149,7 @@ module VDP
 	//Backgrounds
 	bit  [9:0] HSCRLA;
 	bit  [9:0] HSCRLB;
-	bit [15:0] PNI[2];
+	BGPatterName_t PNI[2];
 	bit  [5:1] WHP_LATCH;
 	bit        WHP_RIGT_LATCH;
 	bit  [4:0] WVP_LATCH;
@@ -1235,15 +1257,15 @@ module VDP
 			
 			ST_BGACHAR,
 			ST_BGBCHAR: begin
-				if (!PNI[0][12])
+				if (!PNI[0].VF)
 					PIX_Y =  OFFSET_Y[3:0];
 				else
 					PIX_Y = ~OFFSET_Y[3:0];
 				
 				if (MR4.LSM != 2'b11)
-					BG_VRAM_ADDR = {PNI[0][10:0], PIX_Y[3:1], BYTE_CNT};
+					BG_VRAM_ADDR = {PNI[0].PT[10:0], PIX_Y[3:1], BYTE_CNT};
 				else
-					BG_VRAM_ADDR = {PNI[0][ 9:0], PIX_Y[3:0], BYTE_CNT};
+					BG_VRAM_ADDR = {PNI[0].PT[ 9:0], PIX_Y[3:0], BYTE_CNT};
 			end
 			
 			default:
@@ -1251,13 +1273,13 @@ module VDP
 		endcase
 	end
 	
-	BGTileInfoBuf_t BGA_TILE_BUF;
-	BGTileInfoBuf_t BGB_TILE_BUF;
+	BGTileBuf_t BGA_TILE_BUF;
+	BGTileBuf_t BGB_TILE_BUF;
 	always @(posedge CLK or negedge RST_N) begin
 		if (!RST_N) begin
 			HSCRLA <= '0;
 			HSCRLB <= '0;
-			PNI <= '{2{'0}};
+			PNI <= '{2{BGPN_NULL}};
 			BGA_TILE_BUF <= '{2{'0}};
 			BGB_TILE_BUF <= '{2{'0}};
 		end else begin
@@ -1280,14 +1302,14 @@ module VDP
 						end
 						
 						ST_BGACHAR: begin
-							if (!PNI[0][11])
+							if (!PNI[0].HF)
 								BGA_TILE_BUF[0].DATA <= {VRAM_SDATA[15:0],VRAM_SDATA[31:16]};
 							else
 								BGA_TILE_BUF[0].DATA <= {VRAM_SDATA[19:16],VRAM_SDATA[23:20],VRAM_SDATA[27:24],VRAM_SDATA[31:28],
 																 VRAM_SDATA[ 3: 0],VRAM_SDATA[ 7: 4],VRAM_SDATA[11: 8],VRAM_SDATA[15:12]};
 								
-							BGA_TILE_BUF[0].PAL <= PNI[0][14:13];
-							BGA_TILE_BUF[0].PRIO <= PNI[0][15];
+							BGA_TILE_BUF[0].PAL <= PNI[0].CP;
+							BGA_TILE_BUF[0].PRIO <= PNI[0].PRI;
 							BGA_TILE_BUF[0].WIN <= WIN_HIT;
 							BGA_TILE_BUF[0].VGRID <= VG;
 							BGA_TILE_BUF[1] <= BGA_TILE_BUF[0];
@@ -1295,14 +1317,14 @@ module VDP
 						end
 							
 						ST_BGBCHAR: begin
-							if (!PNI[0][11])
+							if (!PNI[0].HF)
 								BGB_TILE_BUF[0].DATA <= {VRAM_SDATA[15:0],VRAM_SDATA[31:16]};
 							else
 								BGB_TILE_BUF[0].DATA <= {VRAM_SDATA[19:16],VRAM_SDATA[23:20],VRAM_SDATA[27:24],VRAM_SDATA[31:28],
 																 VRAM_SDATA[ 3: 0],VRAM_SDATA[ 7: 4],VRAM_SDATA[11: 8],VRAM_SDATA[15:12]};
 								
-							BGB_TILE_BUF[0].PAL <= PNI[0][14:13];
-							BGB_TILE_BUF[0].PRIO <= PNI[0][15];
+							BGB_TILE_BUF[0].PAL <= PNI[0].CP;
+							BGB_TILE_BUF[0].PRIO <= PNI[0].PRI;
 							BGB_TILE_BUF[0].WIN <= 0;
 							BGB_TILE_BUF[0].VGRID <= VG;
 							BGB_TILE_BUF[1] <= BGB_TILE_BUF[0];
@@ -1317,6 +1339,12 @@ module VDP
 	end
 	
 	//Sprites
+	wire  [5:0] OBJ_MAX_CNT = !OBJ_MAX ? (!H40 ? 6'd16 : 6'd20) : (!H40 ? 6'd32 : 6'd40);
+	wire        OBJ_CE = SLOT_CE || (DCLK_CE && OBJ_MAX);
+	
+	bit   [6:0] OBJ_N;
+	bit   [5:0] OBJC_Y_OFS;
+	
 	wire  [6:0] OBJC_ADDR_RD = SLOT == ST_SPRCHAR ? (OBJ_N & {H40,6'b111111}) : OBJVI_Q;
 	wire  [6:0] OBJC_ADDR_WR = IO_ADDR[9:3] & {H40,6'b111111};
 	wire [31:0] OBJC_D = !MR2.M128K ? {4{IO_DATA[7:0]}} : {2{IO_DATA[15:0]}};
@@ -1340,58 +1368,122 @@ module VDP
 	bit   [5:0] OBJVI_ADDR_RD;
 	bit   [5:0] OBJVI_ADDR_WR;
 	wire  [6:0] OBJVI_D = OBJ_N;
-	wire        OBJVI_WE = OBJ_FIND && ((OBJVI_ADDR_WR < 6'd16 && !H40 && !OBJ_MAX) || (OBJVI_ADDR_WR < 6'd20 && H40 && !OBJ_MAX) || (OBJVI_ADDR_WR < 6'd32 && H40 && OBJ_MAX)) && SLOT == ST_SPRCHAR && DCLK_CE;
+	wire        OBJVI_WE = OBJ_FIND && (OBJVI_ADDR_WR < OBJ_MAX_CNT) && SLOT == ST_SPRCHAR && DCLK_CE;
 	wire  [6:0] OBJVI_Q;
-	dpram #(6,7) obj_visinfo
+	mlab #(6,7) obj_visinfo
 	(
 		.clock(CLK),
-		.address_a(OBJVI_ADDR_RD),
-		.q_a(OBJVI_Q),
-		.address_b(OBJVI_ADDR_WR),
-		.data_b(OBJVI_D),
-		.wren_b(OBJVI_WE)
+		.rdaddress(OBJVI_ADDR_RD),
+		.q(OBJVI_Q),
+		.wraddress(OBJVI_ADDR_WR),
+		.data(OBJVI_D),
+		.wren(OBJVI_WE)
 	);
 	
 	bit   [5:0] OBJSI_ADDR_RD;
 	bit   [5:0] OBJSI_ADDR_WR;
 	wire [34:0] OBJSI_D = {VRAM_SDATA[24:0], OBJC_Q[27:24], OBJC_Y_OFS};
-	wire        OBJSI_WE = (OBJVI_ADDR_RD < OBJVI_ADDR_WR) && SLOT == ST_SPRMAP && (SLOT_CE || (DCLK_CE && OBJ_MAX));
+	wire        OBJSI_WE = (OBJVI_ADDR_RD < OBJVI_ADDR_WR) && SLOT == ST_SPRMAP && OBJ_CE;
 	wire [34:0] OBJSI_Q;
-	dpram #(6,35) obj_spinfo
+	mlab #(6,35) obj_spinfo
 	(
 		.clock(CLK),
-		.address_a(OBJSI_ADDR_RD),
-		.q_a(OBJSI_Q),
-		.address_b(OBJSI_ADDR_WR),
-		.data_b(OBJSI_D),
-		.wren_b(OBJSI_WE)
+		.rdaddress(OBJSI_ADDR_RD),
+		.q(OBJSI_Q),
+		.wraddress(OBJSI_ADDR_WR),
+		.data(OBJSI_D),
+		.wren(OBJSI_WE)
 	);
 	
-	ObjRenderInfo_t OBJRI[7];
+	ObjRenderInfo_t OBJRI[14];
 	
-	always @(posedge CLK or negedge RST_N) begin
-		bit  [8:0] SPR_Y;
-		bit  [6:0] OBJC_LINK;
-		bit  [1:0] OBJC_VS;
-		bit  [9:0] OBJC_Y;
+	bit   [8:0] SPR_Y;
+	ObjCacheInfo_t OBJ_CI;
+	ObjSpriteInfo_t OBJ_SI;
+	bit         OBJ_FIND;
+	bit   [1:0] OBJ_TILE_N;
+	bit         OBJ_FIND_DONE;
+	bit   [8:0] OBJ_HPOS;
+	always_comb begin
 		bit  [9:0] TEMP;
-		bit  [5:0] OBJC_TILE_Y ;
-		bit [10:0] OBJ_PAT;
-		bit  [1:0] OBJ_VS;
-		bit  [1:0] OBJ_HS;
-		bit  [8:0] OBJ_X;
-		bit  [5:0] OBJ_YOFS;
-		bit        OBJ_HF, OBJ_VF;
-		bit  [1:0] OBJ_PAL;
-		bit        OBJ_PRI;
-		bit  [1:0] OBJ_TILE_N;
+		bit  [5:0] OBJC_TILE_Y;
 		bit  [1:0] OBJ_TILE_X;
 		bit  [1:0] OBJ_TILE_Y;
 		bit  [3:0] OBJ_TILE_X_24;
 		bit  [3:0] OBJ_OFS_Y;
 		bit  [7:0] OBJ_TILE_OFS;
-		bit  [8:0] OBJ_POS;
-		bit        OBJ_FIND_DONE;
+		bit        OBJ_MASKED;
+		bit        OBJ_VALID_X;
+
+		//part 1,2
+		OBJ_CI = OBJC_Q;
+		
+		if (MR4.LSM == 2'b11)
+			TEMP = 10'b0100000000 + {1'b0,SPR_Y[7:0],FIELD} - OBJ_CI.VP[9:0];
+		else
+			TEMP = 10'b0100000000 + {1'b0,SPR_Y[7:0],1'b0}  - {OBJ_CI.VP[8:0],1'b0};
+		
+		//save only the last 5(6 in doubleres) bits of the offset for part 3
+		//Titan 2 textured cube (ab)uses this
+		OBJC_Y_OFS = TEMP[5:0];
+		
+		//part 3
+		OBJ_SI = OBJSI_Q;
+		
+		OBJ_FIND = 0;
+		case (SLOT)
+			ST_SPRMAP: begin		
+				//part 2
+				if (!H40)
+					SPR_VRAM_ADDR = {SAT.AT[15: 9], OBJVI_Q[5:0], 1'b1, BYTE_CNT};
+				else
+					SPR_VRAM_ADDR = {SAT.AT[15:10], OBJVI_Q[6:0], 1'b1, BYTE_CNT};
+			end
+			
+			ST_SPRCHAR: begin
+				//part 1
+				OBJC_TILE_Y = TEMP[9:4];
+				if ((OBJ_CI.VS == 2'b00 && OBJC_TILE_Y[5:0] == 6'b000000                           ) || // 8 pix
+					 (OBJ_CI.VS == 2'b01 && OBJC_TILE_Y[5:1] == 5'b00000                            ) || // 16 pix
+					 (OBJ_CI.VS == 2'b10 && OBJC_TILE_Y[5:2] == 4'b0000 && OBJC_TILE_Y[1:0] != 2'b11) ||	// 24 pix
+					 (OBJ_CI.VS == 2'b11 && OBJC_TILE_Y[5:2] == 4'b0000                             ))  	// 32 pix
+					OBJ_FIND = ~OBJ_FIND_DONE;
+
+				//part 3
+				if (!OBJ_SI.HF)
+					OBJ_TILE_X =             OBJ_TILE_N;
+				else
+					OBJ_TILE_X = OBJ_SI.HS - OBJ_TILE_N;
+				
+				if (!OBJ_SI.VF) begin
+					OBJ_TILE_Y =             OBJ_SI.YOFS[5:4];
+					OBJ_OFS_Y =  OBJ_SI.YOFS[3:0];
+				end else begin
+					OBJ_TILE_Y = OBJ_SI.VS - OBJ_SI.YOFS[5:4];
+					OBJ_OFS_Y = ~OBJ_SI.YOFS[3:0];
+				end
+				OBJ_TILE_X_24 = {(OBJ_TILE_X[1] & OBJ_TILE_X[0]), (OBJ_TILE_X[1] & ~OBJ_TILE_X[0]), (OBJ_TILE_X[1] ^ OBJ_TILE_X[0]), OBJ_TILE_X[0]};
+				case (OBJ_SI.VS)
+					2'b00: OBJ_TILE_OFS = {2'b00, OBJ_TILE_X,   4'b0000} + {4'b0000               , OBJ_OFS_Y};	// 8 pixels
+					2'b01: OBJ_TILE_OFS = {1'b0 , OBJ_TILE_X,  5'b00000} + {3'b000 , OBJ_TILE_Y[0], OBJ_OFS_Y};	// 16 pixels
+					2'b10: OBJ_TILE_OFS = {    OBJ_TILE_X_24,   4'b0000} + {2'b00  , OBJ_TILE_Y   , OBJ_OFS_Y};	// 24 pixels
+					2'b11: OBJ_TILE_OFS = {       OBJ_TILE_X, 6'b000000} + {2'b00  , OBJ_TILE_Y   , OBJ_OFS_Y};	// 32 pixels
+				endcase
+				
+				if (MR4.LSM == 2'b11)
+					SPR_VRAM_ADDR = {OBJ_SI.SN[ 9:0],6'b000000} + {6'b000000 , OBJ_TILE_OFS[7:0], BYTE_CNT};
+				else
+					SPR_VRAM_ADDR = {OBJ_SI.SN[10:0],5'b00000}  + {7'b0000000, OBJ_TILE_OFS[7:1], BYTE_CNT};
+			end
+				
+			default:
+				SPR_VRAM_ADDR = '0;
+		endcase
+		
+		OBJ_HPOS = OBJ_SI.HP + {4'b0000,OBJ_TILE_N,3'b000} - 9'b010000000;
+	end
+	
+	always @(posedge CLK or negedge RST_N) begin
 		bit        OBJ_MASKED;
 		bit        OBJ_VALID_X;
 
@@ -1406,101 +1498,22 @@ module VDP
 			OBJVI_ADDR_RD <= '0;
 			OBJSI_ADDR_WR <= '0;
 			OBJSI_ADDR_RD <= '0;
-		end else begin
-			//part 1,2
-			OBJC_VS = OBJC_Q[25:24];
-			OBJC_LINK = OBJC_Q[22:16];
-			OBJC_Y = OBJC_Q[9:0];
-			
-			if (MR4.LSM == 2'b11)
-				TEMP = 10'b0100000000 + {1'b0,SPR_Y[7:0],FIELD} - OBJC_Y[9:0];
-			else
-				TEMP = 10'b0100000000 + {1'b0,SPR_Y[7:0],1'b0}  - {OBJC_Y[8:0],1'b0};
-			
-			OBJC_TILE_Y = TEMP[9:4];
-			
-			//save only the last 5(6 in doubleres) bits of the offset for part 3
-			//Titan 2 textured cube (ab)uses this
-			OBJC_Y_OFS = TEMP[5:0];
-					
-			//part 3
-			OBJ_YOFS = OBJSI_Q[5:0];
-			OBJ_VS = OBJSI_Q[7:6];
-			OBJ_HS = OBJSI_Q[9:8];
-			OBJ_PAT = OBJSI_Q[20:10];
-			OBJ_HF = OBJSI_Q[21];
-			OBJ_VF = OBJSI_Q[22];
-			OBJ_PAL = OBJSI_Q[24:23];
-			OBJ_PRI = OBJSI_Q[25];
-			OBJ_X = OBJSI_Q[34:26];
-			
-			if (!OBJ_HF)
-				OBJ_TILE_X =          OBJ_TILE_N;
-			else
-				OBJ_TILE_X = OBJ_HS - OBJ_TILE_N;
-			
-			if (!OBJ_VF) begin
-				OBJ_TILE_Y =          OBJ_YOFS[5:4];
-				OBJ_OFS_Y =  OBJ_YOFS[3:0];
-			end else begin
-				OBJ_TILE_Y = OBJ_VS - OBJ_YOFS[5:4];
-				OBJ_OFS_Y = ~OBJ_YOFS[3:0];
-			end
-					
-			OBJ_FIND = 0;
-			case (SLOT)
-				ST_SPRMAP: begin		
-					//part 2
-					if (!H40)
-						SPR_VRAM_ADDR = {SAT.AT[15: 9], OBJVI_Q[5:0], 1'b1, BYTE_CNT};
-					else
-						SPR_VRAM_ADDR = {SAT.AT[15:10], OBJVI_Q[6:0], 1'b1, BYTE_CNT};
-				end
-				
-				ST_SPRCHAR: begin
-					//part 1
-					if ((OBJC_VS == 2'b00 && OBJC_TILE_Y[5:0] == 6'b000000                           ) || // 8 pix
-						 (OBJC_VS == 2'b01 && OBJC_TILE_Y[5:1] == 5'b00000                            ) || // 16 pix
-						 (OBJC_VS == 2'b10 && OBJC_TILE_Y[5:2] == 4'b0000 && OBJC_TILE_Y[1:0] != 2'b11) ||	// 24 pix
-						 (OBJC_VS == 2'b11 && OBJC_TILE_Y[5:2] == 4'b0000                             ))  	// 32 pix
-						OBJ_FIND = ~OBJ_FIND_DONE;
-	
-					//part 3
-					OBJ_TILE_X_24 = {(OBJ_TILE_X[1] & OBJ_TILE_X[0]), (OBJ_TILE_X[1] & ~OBJ_TILE_X[0]), (OBJ_TILE_X[1] ^ OBJ_TILE_X[0]), OBJ_TILE_X[0]};
-					case (OBJ_VS)
-						2'b00: OBJ_TILE_OFS = {2'b00, OBJ_TILE_X,   4'b0000} + {4'b0000               , OBJ_OFS_Y};	// 8 pixels
-						2'b01: OBJ_TILE_OFS = {1'b0 , OBJ_TILE_X,  5'b00000} + {3'b000 , OBJ_TILE_Y[0], OBJ_OFS_Y};	// 16 pixels
-						2'b10: OBJ_TILE_OFS = {    OBJ_TILE_X_24,   4'b0000} + {2'b00  , OBJ_TILE_Y   , OBJ_OFS_Y};	// 24 pixels
-						2'b11: OBJ_TILE_OFS = {       OBJ_TILE_X, 6'b000000} + {2'b00  , OBJ_TILE_Y   , OBJ_OFS_Y};	// 32 pixels
-					endcase
-					
-					if (MR4.LSM == 2'b11)
-						SPR_VRAM_ADDR = {OBJ_PAT[ 9:0],6'b000000} + {6'b000000 , OBJ_TILE_OFS[7:0], BYTE_CNT};
-					else
-						SPR_VRAM_ADDR = {OBJ_PAT[10:0],5'b00000}  + {7'b0000000, OBJ_TILE_OFS[7:1], BYTE_CNT};
-				end
-					
-				default:
-					SPR_VRAM_ADDR = '0;
-			endcase
-			
-			OBJ_POS = OBJ_X + {4'b0000,OBJ_TILE_N,3'b000} - 9'b010000000;
-					
+		end else begin	
 			if (ENABLE) begin
 				if (SLOT == ST_SPRCHAR && DCLK_CE) begin
-					OBJ_N <= OBJC_LINK;
-					if (OBJC_LINK == 0 || ((OBJC_LINK[6] && !H40) || (OBJC_LINK[6] && OBJC_LINK[5] && H40)))
+					OBJ_N <= OBJ_CI.LINK;
+					if (!OBJ_CI.LINK || ((OBJ_CI.LINK[6] && !H40) || (&OBJ_CI.LINK[6:5] && H40)))
 						OBJ_FIND_DONE <= 1;
 					
-					if (OBJ_FIND && ((OBJVI_ADDR_WR < 6'd16 && !H40 && !OBJ_MAX) || (OBJVI_ADDR_WR < 6'd20 && H40 && !OBJ_MAX) || (OBJVI_ADDR_WR < 6'd32 && OBJ_MAX)))
+					if (OBJ_FIND && OBJVI_ADDR_WR < OBJ_MAX_CNT)
 						OBJVI_ADDR_WR <= OBJVI_ADDR_WR + 6'd1;
 				end
 				
-				if (SLOT_CE || (DCLK_CE && OBJ_MAX)) begin
+				if (OBJ_CE) begin
 					case (SLOT)
 						ST_SPRMAP: begin
 							OBJVI_ADDR_RD <= OBJVI_ADDR_RD + 6'd1;
-							if ((OBJVI_ADDR_RD == 6'd16 - 1 && !H40 && !OBJ_MAX) || (OBJVI_ADDR_RD == 6'd20 - 1 && H40 && !OBJ_MAX) || (OBJVI_ADDR_RD == 6'd32 - 1 && OBJ_MAX))
+							if (OBJVI_ADDR_RD == OBJ_MAX_CNT - 1)
 								OBJVI_ADDR_RD <= '0;
 							
 							if (OBJVI_ADDR_RD < OBJVI_ADDR_WR)
@@ -1510,35 +1523,34 @@ module VDP
 						ST_SPRCHAR: begin
 							if (OBJSI_ADDR_RD < OBJSI_ADDR_WR) begin
 								OBJ_TILE_N <= OBJ_TILE_N + 2'd1;
-								if (OBJ_TILE_N == OBJ_HS) begin
+								if (OBJ_TILE_N == OBJ_SI.HS) begin
 									OBJ_TILE_N <= '0;
 									OBJSI_ADDR_RD <= OBJSI_ADDR_RD + 6'd1;
 								end
-								OBJRI[0].XPOS <= OBJ_POS;
-								if (!OBJ_HF)
+								OBJRI[0].XPOS <= OBJ_HPOS;
+								if (!OBJ_SI.HF)
 									OBJRI[0].DATA <= VRAM_SDATA;
 								else
 									OBJRI[0].DATA <= {VRAM_SDATA[ 3: 0],VRAM_SDATA[ 7: 4],VRAM_SDATA[11: 8],VRAM_SDATA[15:12],
 														   VRAM_SDATA[19:16],VRAM_SDATA[23:20],VRAM_SDATA[27:24],VRAM_SDATA[31:28]};
-								
-								OBJRI[0].PAL <= OBJ_PAL;
-								OBJRI[0].PRIO <= OBJ_PRI;
+								OBJRI[0].PAL <= OBJ_SI.CP;
+								OBJRI[0].PRIO <= OBJ_SI.PRI;
 								OBJRI[0].EN <= ~OBJ_MASKED;
 								OBJRI[0].BORD <= 3'b000;
 								if (OBJ_TILE_N == 0)
 									OBJRI[0].BORD[0] <= SPR_GRID_EN;	//left border
 								
-								if (OBJ_TILE_N == OBJ_HS)
+								if (OBJ_TILE_N == OBJ_SI.HS)
 									OBJRI[0].BORD[1] <= SPR_GRID_EN;	//rigth border
 								
-								if (OBJ_YOFS == 0 || (OBJ_VS == OBJ_YOFS[5:4] && OBJ_YOFS[3:1] == 3'b111))	//top/bottom border
+								if (OBJ_SI.YOFS == 0 || (OBJ_SI.VS == OBJ_SI.YOFS[5:4] && OBJ_SI.YOFS[3:1] == 3'b111))	//top/bottom border
 									OBJRI[0].BORD[2] <= SPR_GRID_EN;
 								
 							end else begin
 								OBJRI[0].EN <= 0;
 							end
 							
-							if (OBJ_X != 0)
+							if (OBJ_SI.HP != 0)
 								OBJ_VALID_X <= 1;
 							else if (OBJ_VALID_X)
 								OBJ_MASKED <= 1;
@@ -1557,7 +1569,7 @@ module VDP
 					end
 					
 					if (H_CNT == 9'h003) begin
-						if ((OBJVI_ADDR_WR < 6'd16 && !H40 && !OBJ_MAX) || (OBJVI_ADDR_WR < 6'd20 && H40 && !OBJ_MAX) || (OBJVI_ADDR_WR < 6'd32 && OBJ_MAX))
+						if (OBJVI_ADDR_WR < OBJ_MAX_CNT)
 							OBJVI_ADDR_RD <= OBJVI_ADDR_WR;
 						else
 							OBJVI_ADDR_RD <= '0;
@@ -1577,71 +1589,67 @@ module VDP
 					OBJRI[4] <= OBJRI[3];
 					OBJRI[5] <= OBJRI[4];
 					OBJRI[6] <= OBJRI[5];
+					OBJRI[6] <= OBJRI[5];
+					OBJRI[7] <= OBJRI[6];
+					OBJRI[8] <= OBJRI[7];
+					OBJRI[9] <= OBJRI[8];
+					OBJRI[10] <= OBJRI[9];
+					OBJRI[11] <= OBJRI[10];
+					OBJRI[12] <= OBJRI[11];
+					OBJRI[13] <= OBJRI[12];
 				end
 			end
 		end
 	end
 	
+	ObjRenderInfo_t OBJRI_LAST, OBJRI_PREV;
+	assign OBJRI_LAST = !OBJ_MAX ? OBJRI[6] : OBJRI[13];
+	assign OBJRI_PREV = !OBJ_MAX ? OBJRI[5] : OBJRI[12];
+	
 	bit  [3:0] OBJ_PIX;
-	bit  [8:0] OBJCI_ADDR_A;
+	bit  [8:0] OBJL_ADDR;
 	always @(posedge CLK or negedge RST_N) begin
 		if (!RST_N) begin
 			OBJ_PIX <= '0;
-			OBJCI_ADDR_A <= '0;
+			OBJL_ADDR <= '0;
 		end else begin
 			if (ENABLE) begin
-				if (OBJRI[6].EN && !OBJ_PIX[3]) begin
-					OBJCI_ADDR_A <= OBJCI_ADDR_A + 9'd1;
+				if (OBJRI_LAST.EN && !OBJ_PIX[3]) begin
+					OBJL_ADDR <= OBJL_ADDR + 9'd1;
 					OBJ_PIX <= OBJ_PIX + 4'd1;
 				end
 				
-				if (OBJRI[5].EN && SLOT_CE) begin
-					OBJCI_ADDR_A <= OBJRI[5].XPOS;
+				if (OBJRI_PREV.EN && OBJ_CE) begin
+					OBJL_ADDR <= OBJRI_PREV.XPOS;
 					OBJ_PIX <= '0;
 				end
 			end
 		end
 	end
 
-	wire [7:0] OBJCI_D_A;
+	wire [7:0] OBJL_D;
 	always_comb begin
 		case (OBJ_PIX[2:0])
-			3'b100: OBJCI_D_A = {OBJRI[6].BORD[2]                   , OBJRI[6].PRIO, OBJRI[6].PAL, OBJRI[6].DATA[31:28]};
-			3'b101: OBJCI_D_A = {OBJRI[6].BORD[2]                   , OBJRI[6].PRIO, OBJRI[6].PAL, OBJRI[6].DATA[27:24]};
-			3'b110: OBJCI_D_A = {OBJRI[6].BORD[2]                   , OBJRI[6].PRIO, OBJRI[6].PAL, OBJRI[6].DATA[23:20]};
-			3'b111: OBJCI_D_A = {OBJRI[6].BORD[2] | OBJRI[6].BORD[1], OBJRI[6].PRIO, OBJRI[6].PAL, OBJRI[6].DATA[19:16]};
-			3'b000: OBJCI_D_A = {OBJRI[6].BORD[2] | OBJRI[6].BORD[0], OBJRI[6].PRIO, OBJRI[6].PAL, OBJRI[6].DATA[15:12]};
-			3'b001: OBJCI_D_A = {OBJRI[6].BORD[2]                   , OBJRI[6].PRIO, OBJRI[6].PAL, OBJRI[6].DATA[11: 8]};
-			3'b010: OBJCI_D_A = {OBJRI[6].BORD[2]                   , OBJRI[6].PRIO, OBJRI[6].PAL, OBJRI[6].DATA[ 7: 4]};
-			3'b011: OBJCI_D_A = {OBJRI[6].BORD[2]                   , OBJRI[6].PRIO, OBJRI[6].PAL, OBJRI[6].DATA[ 3: 0]};
+			3'b100: OBJL_D = {OBJRI_LAST.BORD[2]                     , OBJRI_LAST.PRIO, OBJRI_LAST.PAL, OBJRI_LAST.DATA[31:28]};
+			3'b101: OBJL_D = {OBJRI_LAST.BORD[2]                     , OBJRI_LAST.PRIO, OBJRI_LAST.PAL, OBJRI_LAST.DATA[27:24]};
+			3'b110: OBJL_D = {OBJRI_LAST.BORD[2]                     , OBJRI_LAST.PRIO, OBJRI_LAST.PAL, OBJRI_LAST.DATA[23:20]};
+			3'b111: OBJL_D = {OBJRI_LAST.BORD[2] | OBJRI_LAST.BORD[1], OBJRI_LAST.PRIO, OBJRI_LAST.PAL, OBJRI_LAST.DATA[19:16]};
+			3'b000: OBJL_D = {OBJRI_LAST.BORD[2] | OBJRI_LAST.BORD[0], OBJRI_LAST.PRIO, OBJRI_LAST.PAL, OBJRI_LAST.DATA[15:12]};
+			3'b001: OBJL_D = {OBJRI_LAST.BORD[2]                     , OBJRI_LAST.PRIO, OBJRI_LAST.PAL, OBJRI_LAST.DATA[11: 8]};
+			3'b010: OBJL_D = {OBJRI_LAST.BORD[2]                     , OBJRI_LAST.PRIO, OBJRI_LAST.PAL, OBJRI_LAST.DATA[ 7: 4]};
+			3'b011: OBJL_D = {OBJRI_LAST.BORD[2]                     , OBJRI_LAST.PRIO, OBJRI_LAST.PAL, OBJRI_LAST.DATA[ 3: 0]};
 		endcase
 	end
-	wire       OBJCI_WE_A = OBJRI[6].EN && !OBJ_PIX[3] && OBJCI_Q_A[3:0] == 4'b0000;
-	wire [7:0] OBJCI_Q_A = OBJCI_Q_B;
-	wire [8:0] OBJCI_ADDR_B = DISP_X;
-	wire       OBJCI_WE_B = DISP_EN_PIPE[2] && DCLK_CE;
-	wire [7:0] OBJCI_Q_B;
-//	dpram	#(9,8) obj_ci
-//	(
-//		.clock(CLK),
-//		.address_a(OBJCI_ADDR_A),
-//		.address_b(OBJCI_ADDR_B),
-//		.data_a(OBJCI_D_A),
-//		.data_b('0),
-//		.wren_a(OBJCI_WE_A),
-//		.wren_b(OBJCI_WE_B),
-//		.q_a(OBJCI_Q_A),
-//		.q_b(OBJCI_Q_B)
-//	);
-
-	mlab #(9,8) obj_ci
+	wire       OBJL_WE = OBJRI_LAST.EN && !OBJ_PIX[3] && OBJL_Q[3:0] == 4'b0000;
+	wire [7:0] OBJL_Q;
+	mlab #(9,8) obj_line
 	(
 		.clock(CLK),
-		.rdaddress(!DISP_EN_PIPE[2] ? OBJCI_ADDR_A : OBJCI_ADDR_B),
-		.wraddress(!DISP_EN_PIPE[2] ? OBJCI_ADDR_A : OBJCI_ADDR_B),
-		.data(!DISP_EN_PIPE[2] ? OBJCI_D_A : '0),
-		.wren(!DISP_EN_PIPE[2] ? OBJCI_WE_A : OBJCI_WE_B),
-		.q(OBJCI_Q_B)
+		.rdaddress(!DISP_EN_PIPE[2] ? OBJL_ADDR : DISP_X),
+		.wraddress(!DISP_EN_PIPE[2] ? OBJL_ADDR : DISP_X),
+		.data(!DISP_EN_PIPE[2] ? OBJL_D : '0),
+		.wren(!DISP_EN_PIPE[2] ? OBJL_WE : DCLK_CE),
+		.q(OBJL_Q)
 	);
 	
 	always @(posedge CLK or negedge RST_N) begin
@@ -1650,12 +1658,12 @@ module VDP
 			SOVR_FLAG <= 0;
 		end else begin
 			if (ENABLE) begin
-				if (OBJRI[6].EN && !OBJ_PIX[3] && OBJCI_Q_A[3:0] != 4'b0000 && OBJCI_D_A[3:0] != 4'b0000)
+				if (OBJRI_LAST.EN && !OBJ_PIX[3] && OBJL_Q[3:0] != 4'b0000 && OBJL_D[3:0] != 4'b0000)
 					SCOL_FLAG <= 1;
 				else if (SCOL_FLAG_CLR)
 					SCOL_FLAG <= 0;
 				
-				if (H_CNT == 9'h003 && !IN_VBL && OBJSI_ADDR_RD < OBJSI_ADDR_WR && SLOT_CE)
+				if (H_CNT == 9'h003 && !IN_VBL && OBJSI_ADDR_RD < OBJSI_ADDR_WR && OBJ_CE)
 					SOVR_FLAG <= 1;
 				else if (SOVR_FLAG_CLR)
 					SOVR_FLAG <= 0;
@@ -1683,8 +1691,8 @@ module VDP
 	end
 	
 	always @(posedge CLK or negedge RST_N) begin
-		BGTileRender_t BGA_TILE;
-		BGTileRender_t BGB_TILE;
+		BGTile_t   BGA_TILE[4];
+		BGTile_t   BGB_TILE[4];
 		bit        BGA_WIN_LAST;
 		bit  [4:0] XA, XB;
 		bit  [2:0] PIXA, PIXB;
@@ -1692,13 +1700,13 @@ module VDP
 		bit  [3:0] BGA_COL, BGB_COL, SPR_COL;
 		bit  [1:0] BGA_PAL, BGB_PAL, SPR_PAL;
 		bit        BGA_PRIO, BGB_PRIO, SPR_PRIO;
+		bit        SPR_COL_30, SPR_COL_31;
 		bit  [5:0] PAL_COL, PAL_COL_DBG;
 		bit        SPR_BORD;
-		PixMode_t  PIX_MODE[3];
+		PixMode_t  PIX_MODE_PIPE[3];
 		PixMode_t  PIX_MODE_TEMP;
-		bit  [8:0] COLOR;
-		bit  [8:0] COLOR2;
-		bit        BK_COL[3];
+		bit  [8:0] PIX_COL_PIPE[2];
+		bit        BACK_COL_PIPE[3];
 		bit        DISP_GRID;
 	
 		if (!RST_N) begin
@@ -1706,13 +1714,13 @@ module VDP
 			BGA_TILE <= '{4{'0}};
 			BGB_TILE <= '{4{'0}};
 			BGA_WIN_LAST <= 0;
-			COLOR <= '0;
+			PIX_COL_PIPE <= '{2{'0}};
+			PIX_MODE_PIPE <= '{3{PIX_NORMAL}};
+			DISP_GRID <= 0;
 			B <= '0;
 			G <= '0;
 			R <= '0;
-			PIX_MODE <= '{3{PIX_NORMAL}};
 			CE_PIX <= 0;
-			DISP_GRID <= 0;
 		end else begin
 			CE_PIX <= 0;
 			if (ENABLE && DCLK_CE) begin
@@ -1734,6 +1742,7 @@ module VDP
 					BGB_TILE[3] <= BGB_TILE[1];
 				end
 
+				//Pipeline 0
 				if (DISP_EN_PIPE[2]) begin
 					CELLW = {1'b0,DISP_X[3]};
 					if (BGA_TILE[CELLW].WIN)
@@ -1754,27 +1763,29 @@ module VDP
 					BGB_PAL = BGB_TILE[CELLB].PAL;
 					BGB_PRIO = BGB_TILE[CELLB].PRIO;
 					
-					SPR_COL = OBJCI_Q_B[3:0];
-					SPR_PAL = OBJCI_Q_B[5:4];
-					SPR_PRIO = OBJCI_Q_B[6];
-					SPR_BORD = OBJCI_Q_B[7];
+					SPR_COL = OBJL_Q[3:0];
+					SPR_PAL = OBJL_Q[5:4];
+					SPR_PRIO = OBJL_Q[6];
+					SPR_BORD = OBJL_Q[7];
+					SPR_COL_31 = (OBJL_Q[5:0] == 6'h3F);
+					SPR_COL_30 = (OBJL_Q[5:0] == 6'h3E);
 						
-					BK_COL[0] <= 0;
-					if      (SPR_COL != 4'b0000 &&  SPR_PRIO && (!MR4.STE || OBJCI_Q_B[5:1] != 5'b11111) && SPR_EN)
+					BACK_COL_PIPE[0] <= 0;
+					if      (SPR_COL != 4'b0000 &&  SPR_PRIO && (!MR4.STE || (!SPR_COL_30 && !SPR_COL_31)) && SPR_EN)
 						PAL_COL = {SPR_PAL,SPR_COL};
-					else if (BGA_COL != 4'b0000 &&  BGA_PRIO                                             && BGA_EN)
+					else if (BGA_COL != 4'b0000 &&  BGA_PRIO                                               && BGA_EN)
 						PAL_COL = {BGA_PAL,BGA_COL};
-					else if (BGB_COL != 4'b0000 &&  BGB_PRIO                                             && BGB_EN)
+					else if (BGB_COL != 4'b0000 &&  BGB_PRIO                                               && BGB_EN)
 						PAL_COL = {BGB_PAL,BGB_COL};
-					else if (SPR_COL != 4'b0000 && !SPR_PRIO && (!MR4.STE || OBJCI_Q_B[5:1] != 5'b11111) && SPR_EN)
+					else if (SPR_COL != 4'b0000 && !SPR_PRIO && (!MR4.STE || (!SPR_COL_30 && !SPR_COL_31)) && SPR_EN)
 						PAL_COL = {SPR_PAL,SPR_COL};
-					else if (BGA_COL != 4'b0000 && !BGA_PRIO                                             && BGA_EN)
+					else if (BGA_COL != 4'b0000 && !BGA_PRIO                                               && BGA_EN)
 						PAL_COL = {BGA_PAL,BGA_COL};
-					else if (BGB_COL != 4'b0000 && !BGB_PRIO                                             && BGB_EN)
+					else if (BGB_COL != 4'b0000 && !BGB_PRIO                                               && BGB_EN)
 						PAL_COL = {BGB_PAL,BGB_COL};
 					else begin
 						PAL_COL = {BGC.PAL,BGC.COL};
-						BK_COL[0] <= 1;
+						BACK_COL_PIPE[0] <= 1;
 					end
 					
 					if (MR4.STE && !BGA_PRIO && !BGB_PRIO)
@@ -1783,21 +1794,21 @@ module VDP
 					else
 						PIX_MODE_TEMP = PIX_NORMAL;
 					
-					PIX_MODE[0] <= PIX_MODE_TEMP;
+					PIX_MODE_PIPE[0] <= PIX_MODE_TEMP;
 					if (MR4.STE && (SPR_PRIO || ((!BGA_PRIO || BGA_COL == 4'b0000) && (!BGB_PRIO || BGB_COL == 4'b0000)))) begin
 						//sprite is visible
-						if (OBJCI_Q_B[5:0] == 6'b111110)
+						if (SPR_COL_30)
 							//if sprite is palette 3/color 14 increase intensity
 							if (PIX_MODE_TEMP == PIX_SHADOW)
-								PIX_MODE[0] <= PIX_NORMAL;
+								PIX_MODE_PIPE[0] <= PIX_NORMAL;
 							else
-								PIX_MODE[0] <= PIX_HIGHLIGHT;
-						else if (OBJCI_Q_B[5:0] == 6'b111111)
+								PIX_MODE_PIPE[0] <= PIX_HIGHLIGHT;
+						else if (SPR_COL_31)
 							//if sprite is visible and palette 3/color 15, decrease intensity
-							PIX_MODE[0] <= PIX_SHADOW;
+							PIX_MODE_PIPE[0] <= PIX_SHADOW;
 						else if ((SPR_PRIO && SPR_COL != 4'b0000) || SPR_COL == 4'b1110)
 							//sprite color 14 or high prio always shows up normal
-							PIX_MODE[0] <= PIX_NORMAL;
+							PIX_MODE_PIPE[0] <= PIX_NORMAL;
 					end
 					
 					case (DBG[8:7])
@@ -1824,48 +1835,50 @@ module VDP
 					DISP_X <= DISP_X + 9'd1;
 				end else begin
 					CRAM_ADDR_A <= {BGC.PAL,BGC.COL};
-					PIX_MODE[0] <= PIX_NORMAL;
+					PIX_MODE_PIPE[0] <= PIX_NORMAL;
 					DISP_X <= '0;
 					DISP_GRID <= 0;
 				end
 				
 				if (DISP_GRID) begin
-					COLOR <= '1;
-					PIX_MODE[1] <= PIX_NORMAL;
-					BK_COL[1] <= 0;
+					PIX_COL_PIPE[0] <= '1;
+					PIX_MODE_PIPE[1] <= PIX_NORMAL;
+					BACK_COL_PIPE[1] <= 0;
 				end else begin
-					COLOR <= CRAM_Q_A;
-					PIX_MODE[1] <= PIX_MODE[0];
-					BK_COL[1] <= BK_COL[0];
+					PIX_COL_PIPE[0] <= CRAM_Q_A;
+					PIX_MODE_PIPE[1] <= PIX_MODE_PIPE[0];
+					BACK_COL_PIPE[1] <= BACK_COL_PIPE[0];
 				end
 				
-				COLOR2 <= COLOR;
-				PIX_MODE[2] <= PIX_MODE[1];
-				BK_COL[2] <= BK_COL[1];
+				//Pipeline 1
+				PIX_COL_PIPE[1] <= PIX_COL_PIPE[0];
+				PIX_MODE_PIPE[2] <= PIX_MODE_PIPE[1];
+				BACK_COL_PIPE[2] <= BACK_COL_PIPE[1];
 				
-				case (PIX_MODE[2])
+				//Pipeline 2
+				case (PIX_MODE_PIPE[2])
 					PIX_SHADOW: begin
 						// half brightness
-						B <= {1'b0,COLOR2[8:6]};
-						G <= {1'b0,COLOR2[5:3]};
-						R <= {1'b0,COLOR2[2:0]};
+						B <= {1'b0,PIX_COL_PIPE[1][8:6]};
+						G <= {1'b0,PIX_COL_PIPE[1][5:3]};
+						R <= {1'b0,PIX_COL_PIPE[1][2:0]};
 					end
 					
 					PIX_NORMAL: begin
 						// normal brightness
-						B <= {COLOR2[8:6],1'b0};
-						G <= {COLOR2[5:3],1'b0};
-						R <= {COLOR2[2:0],1'b0};
+						B <= {PIX_COL_PIPE[1][8:6],1'b0};
+						G <= {PIX_COL_PIPE[1][5:3],1'b0};
+						R <= {PIX_COL_PIPE[1][2:0],1'b0};
 					end
 				
 					PIX_HIGHLIGHT: begin
 						// increased brightness
-						B <= {1'b0,COLOR2[8:6]} + 4'h7;
-						G <= {1'b0,COLOR2[5:3]} + 4'h7;
-						R <= {1'b0,COLOR2[2:0]} + 4'h7;
+						B <= {1'b0,PIX_COL_PIPE[1][8:6]} + 4'h7;
+						G <= {1'b0,PIX_COL_PIPE[1][5:3]} + 4'h7;
+						R <= {1'b0,PIX_COL_PIPE[1][2:0]} + 4'h7;
 					end
 				endcase
-				YS_N <= ~BK_COL[2];
+				YS_N <= ~BACK_COL_PIPE[2];
 				
 				CE_PIX <= 1;
 			end
@@ -1889,7 +1902,7 @@ module VDP
 						default: HV[15:8] <=  V_CNT[7:0];
 					endcase
 					
-//					EXINT_PENDING_SET <= '1';
+//					EXINT_PENDING_SET <= 1;
 				end
 			end
 		end
@@ -1898,7 +1911,7 @@ module VDP
 	always @(posedge CLK or negedge RST_N) begin
 		bit        HINT_EN;
 		bit  [7:0] HINT_COUNT;
-		bit        INTACK_OLD;
+		bit        INTACK_N_OLD;
 		bit [11:0] Z80_INT_WAIT;
 		
 		if (!RST_N) begin
@@ -1907,11 +1920,11 @@ module VDP
 			HINT_COUNT <= '0;
 			Z80_INT_FLAG <= 0;
 			Z80_INT_WAIT <= '0;
-			INTACK_OLD <= 0;
+			INTACK_N_OLD <= 0;
 		end else begin
 			if (ENABLE) begin
-				INTACK_OLD <= INTACK;
-				if (INTACK && !INTACK_OLD) begin
+				INTACK_N_OLD <= INTACK_N;
+				if (!INTACK_N && INTACK_N_OLD) begin
 					if (VINT_FLAG && MR2.IE0)
 						VINT_FLAG <= 0;
 					else if (HINT_FLAG && MR1.IE1)
@@ -1982,15 +1995,18 @@ module VDP
 	
 	
 	//debug
-	assign DBG_SLOT_HSCROLL = SLOTS[2] == ST_HSCROLL;
-	assign DBG_SLOT_BGAMAP  = SLOTS[2] == ST_BGAMAP;
-	assign DBG_SLOT_BGACHAR = SLOTS[2] == ST_BGACHAR;
-	assign DBG_SLOT_BGBMAP  = SLOTS[2] == ST_BGBMAP;
-	assign DBG_SLOT_BGBCHAR = SLOTS[2] == ST_BGBCHAR;
-	assign DBG_SLOT_SPRMAP  = SLOTS[2] == ST_SPRMAP;
-	assign DBG_SLOT_SPRCHAR = SLOTS[2] == ST_SPRCHAR;
-	assign DBG_SLOT_EXT     = SLOTS[2] == ST_EXT;
-	assign DBG_SLOT_REFRESH = SLOTS[2] == ST_REFRESH;
+	assign DBG_SLOT0_EXT     = SLOT_PIPE[0] == ST_EXT;
+	assign DBG_SLOT1_EXT     = SLOT_PIPE[1] == ST_EXT;
+	
+	assign DBG_SLOT2_HSCROLL = SLOT_PIPE[2] == ST_HSCROLL;
+	assign DBG_SLOT2_BGAMAP  = SLOT_PIPE[2] == ST_BGAMAP;
+	assign DBG_SLOT2_BGACHAR = SLOT_PIPE[2] == ST_BGACHAR;
+	assign DBG_SLOT2_BGBMAP  = SLOT_PIPE[2] == ST_BGBMAP;
+	assign DBG_SLOT2_BGBCHAR = SLOT_PIPE[2] == ST_BGBCHAR;
+	assign DBG_SLOT2_SPRMAP  = SLOT_PIPE[2] == ST_SPRMAP;
+	assign DBG_SLOT2_SPRCHAR = SLOT_PIPE[2] == ST_SPRCHAR;
+	assign DBG_SLOT2_EXT     = SLOT_PIPE[2] == ST_EXT;
+	assign DBG_SLOT2_REFRESH = SLOT_PIPE[2] == ST_REFRESH;
 	
 	assign DBG_FIFO_ADDR = FIFO_ADDR;
 	assign DBG_FIFO_DATA = FIFO_DATA;

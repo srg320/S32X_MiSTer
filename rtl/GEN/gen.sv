@@ -135,8 +135,9 @@ module gen
 	output [23:0] DBG_M68K_A,
 	output [23:0] DBG_MBUS_A,
 	output [15:0] DBG_HOOK,
-	output [7:0] DBG_HOOK2,
-	output [7:0] DBG_Z80_HOOK
+	output  [7:0] DBG_HOOK2,
+	output        DBG_HOOK3,
+	output  [7:0] DBG_Z80_HOOK
 );
 
 reg reset;
@@ -294,6 +295,100 @@ dpram #(15) ram68k_l
 );
 
 //--------------------------------------------------------------
+// Bus arbiter
+//--------------------------------------------------------------
+//wire        IO_N;
+//wire        VDP_N;
+//
+//wire [15:0] ZA;
+//wire  [7:0] ZDI;
+//wire  [7:0] ZDO;
+//wire        ZWR_N;
+//wire        ZRD_N;
+//wire        ZRAM_N;
+//wire        YM_N;
+//
+//BA ba
+//(
+//	.RST_N(~reset),
+//	.CLK(MCLK),
+//	.ENABLE(1),
+//	
+//	.VA(VA),
+//	.VDI(VDI),
+//	.VDO(VDO),
+//	.RNW(RNW),
+//	.LDS_N(LDS_N),
+//	.UDS_N(UDS_N),
+//	.AS_N(AS_N),
+//	.DTACK_N(DTACK_N),
+//	.ASEL_N(ASEL_N),
+//	.VCLK_CE(VCLK_CE),
+//	.CE0_N(CE0_N),
+//	.LWR_N(LWR_N),
+//	.UWR_N(UWR_N),
+//	.CAS0_N(CAS0_N),
+//	.RAS2_N(RAS2_N),
+//	.CAS2_N(CAS2_N),
+//	.IO_N(IO_N),
+//	.ROM_N(ROM_N),
+//	.FDC_N(FDC_N),
+//	.CART_N(CART_N),
+//	.TIME_N(TIME_N),
+//	.VDP_N(VDP_N),
+//	.INTAK_N(INTACK_N),
+//	
+//	.ZA(ZA),
+//	.ZDI(ZDI),
+//	.ZDO(ZDO),
+//	.ZWR_N(ZWR_N),
+//	.ZRD_N(ZRD_N),
+//	.ZRAM_N(ZRAM_N),
+//	.YM_N(YM_N),
+//	
+//	.M68K_CLKENp(M68K_CLKENp),
+//	.M68K_CLKENn(M68K_CLKENn),
+//	.M68K_A(M68K_A),
+//	.M68K_DI(),
+//	.M68K_DO(),
+//	.M68K_RNW(M68K_RNW),
+//	.M68K_LDS_N(M68K_LDS_N),
+//	.M68K_UDS_N(M68K_UDS_N),
+//	.M68K_AS_N(M68K_AS_N),
+//	.M68K_DTACK_N(),
+//	.M68K_FC(M68K_FC[1:0]),
+//	.M68K_BR_N(M68K_BR_N),
+//	.M68K_BG_N(M68K_BG_N),
+//	.M68K_BGACK_N(M68K_BGACK_N),
+//	
+//	.Z80_CLKENp(Z80_CLKENp),
+//	.Z80_CLKENn(Z80_CLKENn),
+//	.Z80_A(Z80_A),
+//	.Z80_DI(),
+//	.Z80_DO(),
+//	.Z80_WR_N(Z80_WR_N),
+//	.Z80_RD_N(Z80_RD_N),
+//	.Z80_MREQ_N(Z80_MREQ_N),
+//	.Z80_M1_N(Z80_M1_N),
+//	.Z80_WAIT_N(Z80_WAIT_N),
+//	//.Z80_RFSH_N(),
+//	.Z80_BUSRQ_N(Z80_BUSRQ_N),
+//	.Z80_BUSAK_N(Z80_BUSAK_N),
+//	.Z80_RESET_N(Z80_RESET_N),
+//	
+//	.VBUS_A(VBUS_A),
+//	.VBUS_D(VBUS_D),
+//	.VBUS_SEL(VBUS_SEL),
+//	.VBUS_DTACK_N(VBUS_DTACK_N),
+//	.VBUS_BR_N(VBUS_BR_N),
+//	.VBUS_BG_N(VBUS_BG_N),
+//	.VBUS_BGACK_N(VBUS_BGACK_N),
+//	
+//	.MEM_RDY(MEM_RDY),
+//	.PAUSE_EN(PAUSE_EN)
+//);
+
+//--------------------------------------------------------------
 // VDP + PSG
 //--------------------------------------------------------------
 reg         VDP_SEL;
@@ -301,7 +396,9 @@ wire [15:0] VDP_DO;
 wire        VDP_DTACK_N;
 
 wire [23:1] VBUS_A;
+wire [15:0] VBUS_D;
 wire        VBUS_SEL;
+wire        VBUS_DTACK_N;
 wire        VBUS_BR_N;
 wire        VBUS_BGACK_N;
 
@@ -316,6 +413,9 @@ wire [15:0] vram_a;
 wire  [7:0] vram_d;
 wire  [7:0] vram_q;
 wire        vram_we;
+
+assign VBUS_D = MBUS_DI;
+assign VBUS_DTACK_N = VDP_MBUS_DTACK_N;
 
 VDP vdp
 (
@@ -342,15 +442,15 @@ VDP vdp
 	.HINT(M68K_HINT),
 	.VINT(M68K_VINT),
 	.IPL_N(M68K_IPL_N[2:1]),
-	.INTACK(M68K_INTACK),
+	.INTACK_N(~M68K_INTACK),
 	.Z80_INT_N(Z80_INT_N),
 	
 	.REFRESH(VRAM_RFRS),
 
-	.VBUS_ADDR(VBUS_A),
-	.VBUS_DATA(MBUS_DI),
+	.VBUS_A(VBUS_A),
+	.VBUS_DATA(VBUS_D),
 	.VBUS_SEL(VBUS_SEL),
-	.VBUS_DTACK_N(VDP_MBUS_DTACK_N),
+	.VBUS_DTACK_N(VBUS_DTACK_N),
 
 	.BG_N(M68K_BG_N),
 	.BR_N(VBUS_BR_N),
@@ -602,6 +702,7 @@ always @(posedge MCLK) begin
 
 		DBG_HOOK <= 0;
 		DBG_HOOK2 <= 0;
+		DBG_HOOK3 <= 0;
 	end
 	else begin
 		if (M68K_CLKENp) begin
@@ -616,7 +717,7 @@ always @(posedge MCLK) begin
 			
 			rfs_ram_timer <= rfs_ram_timer + 8'd1;
 			if (rfs_ram_timer == 8'd119) begin
-				rfs_ram_pend <= 1;
+//				rfs_ram_pend <= 1;
 			end
 			else if (rfs_ram_timer == 8'd132) begin
 				rfs_ram_timer <= 0;
@@ -923,6 +1024,7 @@ always @(posedge MCLK) begin
 				Z80_MBUS_DTACK_N <= ~(msrc == MSRC_Z80);
 				mstate <= MBUS_FINISH;
 			end
+			if (MBUS_A == 24'h000F6A>>1 && MBUS_RNW) DBG_HOOK3 <= 1;
 		end
 			
 		MBUS_VDP_READ:

@@ -117,7 +117,7 @@ module EPPROM_24CXX
 	
 	assign sda_o = state == ADR_7BIT || state == WRITE ? ~sack : 
 	               state == READ                       ? (dout[bit_cnt[2:0]] | bit_cnt[3]) :
-						1;
+						1'b1;
 	
 	reg [12:0] addr;
 	reg        rw;
