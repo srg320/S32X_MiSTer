@@ -555,17 +555,12 @@ module VDP
 				
 				DMA_VBUS_WAIT: begin
 					if (!FF_BGACK_N && SLOT_CE) begin
-//						DMA_VBUS_WC <= DMA_VBUS_WC + 2'd1;
-//						if (DMA_VBUS_WC == 2'd1) begin
-//							FF_VBUS_SEL <= 1;
-//							DMAC <= DMA_VBUS_RD;
-//						end
 						DMAC <= DMA_VBUS_WAIT2;
 					end
 				end
 				
 				DMA_VBUS_WAIT2: begin
-					if (!FF_BGACK_N && SLOT_CE) begin
+					if (SLOT_CE) begin
 						FF_VBUS_SEL <= 1;
 						DMAC <= DMA_VBUS_RD;
 					end
@@ -1066,9 +1061,6 @@ module VDP
 		bit DIV2;
 		
 		if (!RST_N) begin
-			//VRAM_SDATA_TEMP0 <= '0;
-			//VRAM_SDATA_TEMP1 <= '0;
-			//VRAM_SDATA_TEMP2 <= '0;
 			DIV2 <= 0;
 			BYTE_CNT <= '0;
 		end else begin

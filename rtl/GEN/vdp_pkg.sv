@@ -1,6 +1,6 @@
 package VDP_PKG; 
 
-	typedef struct packed	//W,0
+	typedef struct packed	//WO,0
 	{
 		bit [ 2: 0] UNUSED;
 		bit         IE1;
@@ -10,7 +10,7 @@ package VDP_PKG;
 	} MR1_t;
 	parameter bit [7:0] MR1_MASK = 8'h13;
 	
-	typedef struct packed	//W,1
+	typedef struct packed	//WO,1
 	{
 		bit         M128K;
 		bit         DISP;
@@ -22,7 +22,7 @@ package VDP_PKG;
 	} MR2_t;
 	parameter bit [7:0] MR2_MASK = 8'hFC;
 
-	typedef struct packed	//W,2
+	typedef struct packed	//WO,2
 	{
 		bit [ 1: 0] UNUSED;
 		bit [15:13] SA;
@@ -30,7 +30,7 @@ package VDP_PKG;
 	} NTA_t;
 	parameter bit [7:0] NTA_MASK = 8'h38;
 
-	typedef struct packed	//W,3
+	typedef struct packed	//WO,3
 	{
 		bit [ 1: 0] UNUSED;
 		bit [15:11] WD;
@@ -38,26 +38,26 @@ package VDP_PKG;
 	} NTW_t;
 	parameter bit [7:0] NTW_MASK = 8'h3E;
 
-	typedef struct packed	//W,4
+	typedef struct packed	//WO,4
 	{
 		bit [ 4: 0] UNUSED;
 		bit [15:13] SB;
 	} NTB_t;
 	parameter bit [7:0] NTB_MASK = 8'h07;
 
-	typedef struct packed	//W,5
+	typedef struct packed	//WO,5
 	{
 		bit [16: 9] AT;
 	} SAT_t;
 	parameter bit [7:0] SAT_MASK = 8'hFF;
 
-	typedef struct packed	//W,6
+	typedef struct packed	//WO,6
 	{
 		bit [ 7: 0] UNUSED;
 	} R6_t;
 	parameter bit [7:0] R6_MASK = 8'h00;
 
-	typedef struct packed	//W,7
+	typedef struct packed	//WO,7
 	{
 		bit [ 1: 0] UNUSED;
 		bit [ 1: 0] PAL;
@@ -65,25 +65,25 @@ package VDP_PKG;
 	} BGC_t;
 	parameter bit [7:0] BGC_MASK = 8'h3F;
 
-	typedef struct packed	//W,8
+	typedef struct packed	//WO,8
 	{
 		bit [ 7: 0] UNUSED;
 	} R8_t;
 	parameter bit [7:0] R8_MASK = 8'h00;
 
-	typedef struct packed	//W,9
+	typedef struct packed	//WO,9
 	{
 		bit [ 7: 0] UNUSED;
 	} R9_t;
 	parameter bit [7:0] R9_MASK = 8'h00;
 
-	typedef struct packed	//W,10
+	typedef struct packed	//WO,10
 	{
 		bit [ 7: 0] HIT;
 	} HIR_t;
 	parameter bit [7:0] HIR_MASK = 8'hFF;
 
-	typedef struct packed	//W,11
+	typedef struct packed	//WO,11
 	{
 		bit [ 3: 0] UNUSED;
 		bit         IE2;
@@ -92,7 +92,7 @@ package VDP_PKG;
 	} MR3_t;
 	parameter bit [7:0] MR3_MASK = 8'h0F;
 
-	typedef struct packed	//W,12
+	typedef struct packed	//WO,12
 	{
 		bit         RS0;
 		bit [ 2: 0] UNUSED;
@@ -102,26 +102,26 @@ package VDP_PKG;
 	} MR4_t;
 	parameter bit [7:0] MR4_MASK = 8'h8F;
 
-	typedef struct packed	//W,13
+	typedef struct packed	//WO,13
 	{
 		bit [ 1: 0] UNUSED;
 		bit [15:10] HS;
 	} NSDT_t;
 	parameter bit [7:0] NSDT_MASK = 8'h3F;
 
-	typedef struct packed	//W,14
+	typedef struct packed	//WO,14
 	{
 		bit [ 7: 0] UNUSED;
 	} R14_t;
 	parameter bit [7:0] R14_MASK = 8'h00;
 
-	typedef struct packed	//W,15
+	typedef struct packed	//WO,15
 	{
 		bit [ 7: 0] INC;
 	} AI_t;
 	parameter bit [7:0] AI_MASK = 8'hFF;
 
-	typedef struct packed	//W,16
+	typedef struct packed	//WO,16
 	{
 		bit [ 1: 0] UNUSED;
 		bit [ 1: 0] VSZ;
@@ -130,7 +130,7 @@ package VDP_PKG;
 	} SS_t;
 	parameter bit [7:0] SS_MASK = 8'h33;
 
-	typedef struct packed	//W,17
+	typedef struct packed	//WO,17
 	{
 		bit         RIGT;
 		bit [ 1: 0] UNUSED;
@@ -138,7 +138,7 @@ package VDP_PKG;
 	} WHP_t;
 	parameter bit [7:0] WHP_MASK = 8'h9F;
 
-	typedef struct packed	//W,18
+	typedef struct packed	//WO,18
 	{
 		bit         DOWN;
 		bit [ 1: 0] UNUSED;
@@ -146,13 +146,13 @@ package VDP_PKG;
 	} WVP_t;
 	parameter bit [7:0] WVP_MASK = 8'h9F;
 
-	typedef bit [15:0] DLC_t;	//W,19,20
+	typedef bit [15:0] DLC_t;	//WO,19,20
 	parameter bit [15:0] DLC_MASK = 16'hFFFF;
 
-	typedef bit [23:0] DSA_t;	//W,21,22,23
+	typedef bit [23:0] DSA_t;	//WO,21,22,23
 	parameter bit [23:0] DSA_MASK = 24'hFFFFFF;
 
-	typedef bit [15:0] DBG_t;	//W
+	typedef bit [15:0] DBG_t;	//WO
 	parameter bit [15:0] DBG_MASK = 16'hFFFF;
 	
 	
@@ -163,7 +163,6 @@ package VDP_PKG;
 		bit [ 3: 0] CODE;
 	} FifoItem_t;
 	parameter FifoItem_t FIFOITEM_NULL = {17'h00000,16'h0000,4'h0};
-//	typedef FifoItem_t FifoItemArray_t[4];
 	
 	typedef struct packed
 	{

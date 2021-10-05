@@ -20,6 +20,7 @@ module BA
 	output        CAS0_N,
 	output        RAS2_N,
 	output        CAS2_N,
+	output        RAM_N,
 	output        IO_N,
 	output        ROM_N,
 	output        FDC_N,
@@ -39,8 +40,8 @@ module BA
 	input         M68K_CLKENp,
 	input         M68K_CLKENn,
 	input  [23:1] M68K_A,
-	input  [15:0] M68K_DI,
-	output [15:0] M68K_DO,
+	output [15:0] M68K_DI,
+	input  [15:0] M68K_DO,
 	input         M68K_RNW,
 	input         M68K_LDS_N,
 	input         M68K_UDS_N,
@@ -54,8 +55,8 @@ module BA
 	input         Z80_CLKENp,
 	input         Z80_CLKENn,
 	input  [15:0] Z80_A,
-	input   [7:0] Z80_DI,
-	output  [7:0] Z80_DO,
+	output  [7:0] Z80_DI,
+	input   [7:0] Z80_DO,
 	input         Z80_WR_N,
 	input         Z80_RD_N,
 	input         Z80_MREQ_N,
@@ -103,7 +104,6 @@ module BA
 	
 	reg  [15:0] OPEN_BUS;
 	
-	//reg         ROM_SEL;
 	reg         CTRL_SEL;
 	reg         IO_SEL;
 	reg         RAM_SEL;
@@ -152,7 +152,6 @@ module BA
 			MBUS_LDS_N <= 1;
 			MBUS_RNW <= 1;
 			MBUS_AS_N <= 1;
-	//		ROM_SEL <= 0;
 			RAM_SEL <= 0;
 			VDP_SEL <= 0;
 			IO_SEL <= 0;
@@ -214,7 +213,6 @@ module BA
 						case (M68K_A[23:20])
 							//CART: 000000-3FFFFF,400000-7FFFFF
 							4'h0,4'h1,4'h2,4'h3,4'h4,4'h5,4'h6,4'h7: begin
-	//							ROM_SEL <= 1;
 								mstate <= MBUS_ROM_REFRESH;
 								if (!rfs_rom_delay && rfs_rom_pend) rfs_rom_delay <= 2'd2;
 								rfs_rom_pend <= 0;
@@ -333,7 +331,6 @@ module BA
 						case (VBUS_A[23:20])
 							//CART: 000000-3FFFFF,400000-7FFFFF
 							4'h0,4'h1,4'h2,4'h3,4'h4,4'h5,4'h6,4'h7: begin
-	//							ROM_SEL <= 1;
 								mstate <= MBUS_ROM_REFRESH;
 								if (!rfs_rom_delay && rfs_rom_pend) rfs_rom_delay <= 2'd2;
 								rfs_rom_pend <= 0;
@@ -358,7 +355,6 @@ module BA
 							
 							default:;
 						endcase
-//						DBG_HOOK2 <= '0;
 					end
 	//				else if (Z80_IO && !Z80_ZBUS && Z80_MBUS_DTACK_N && !Z80_AS_N) begin
 					else if (Z80_IO && !Z80_ZBUS_AREA && Z80_MBUS_DTACK_N && !Z80_BGACK_N && Z80_BR_N) begin
@@ -375,7 +371,6 @@ module BA
 							case (BAR[23:20])
 								//CART: 000000-3FFFFF,400000-7FFFFF
 								4'h0,4'h1,4'h2,4'h3,4'h4,4'h5,4'h6,4'h7: begin
-	//								ROM_SEL <= 1;
 									mstate <= MBUS_ROM_READ;
 									if (!rfs_rom_delay && rfs_rom_pend) rfs_rom_delay <= 2'd2;
 									rfs_rom_pend <= 0;
@@ -425,7 +420,6 @@ module BA
 	//						if (rfs_ram_pend && !Z80_WR_N) rfs_ram_pend <= 0;
 							mstate <= MBUS_VDP_READ;
 						end
-//						DBG_HOOK2 <= '0;
 					end
 				end
 				end
@@ -453,16 +447,7 @@ module BA
 					Z80_MBUS_DTACK_N <= ~(msrc == MSRC_Z80);
 					if (msrc == MSRC_M68K && MBUS_RNW) OPEN_BUS <= VDI;
 					mstate <= MBUS_FINISH;
-//					if (MBUS_A == 24'hFFE03C>>1 && !MBUS_RNW) DBG_HOOK <= MBUS_DO;
 				end
-	
-	//		MBUS_RAM_WRITE: begin
-	//				M68K_MBUS_DTACK_N <= ~(msrc == MSRC_M68K);
-	//				VDP_MBUS_DTACK_N <= ~(msrc == MSRC_VDP);
-	//				Z80_MBUS_DTACK_N <= ~(msrc == MSRC_Z80);
-	//				mstate <= MBUS_FINISH;
-	//				if (MBUS_A == 24'hFFE03C>>1) DBG_HOOK <= MBUS_DO;
-	//			end
 				
 			MBUS_ROM_WAIT: begin
 				mstate <= rfs_rom_pend ? MBUS_ROM_REFRESH : MBUS_ROM_READ;
@@ -521,7 +506,6 @@ module BA
 						Z80_MBUS_DTACK_N <= ~(msrc == MSRC_Z80);
 						mstate <= MBUS_FINISH;
 					end
-	//				DBG_HOOK2 <= DBG_HOOK2 + 8'd1;
 				end
 				
 			MBUS_FINISH:
@@ -538,7 +522,6 @@ module BA
 						MBUS_LDS_N <= 1;
 						MBUS_RNW <= 1;
 						MBUS_ASEL_N <= 1;
-	//					ROM_SEL <= 0;
 						RAM_SEL <= 0;
 						VDP_SEL <= 0;
 						ZBUS_SEL <= 0;
@@ -570,6 +553,7 @@ module BA
 	assign IO_N    = ~IO_SEL;											//A10000-A1001F
 	assign TIME_N  = ~TIME_SEL;										//A13000-A130FF
 	assign FDC_N   = ~FDC_SEL;											//A12000-A120FF 
+	assign RAM_N   = ~RAM_SEL;
 	assign VDP_N   = ~VDP_SEL;
 	assign VCLK_CE = M68K_CLKENn;
 	assign INTAK_N = ~M68K_INTACK;
@@ -582,7 +566,7 @@ module BA
 	assign LWR_N  =  MBUS_RNW | MBUS_LDS_N;						//000000-FFFFFF 
 	assign UWR_N  =  MBUS_RNW | MBUS_UDS_N;						//000000-FFFFFF 
 	
-	assign M68K_DO = MBUS_DI;
+	assign M68K_DI = MBUS_DI;
 	assign M68K_DTACK_N = M68K_MBUS_DTACK_N;
 	assign M68K_BR_N = VBUS_BR_N & Z80_BR_N;
 	assign M68K_BGACK_N = VBUS_BGACK_N & Z80_BGACK_N;
@@ -635,11 +619,11 @@ module BA
 		reg Z80_BGACK_DIS, Z80_BGACK_DIS2;
 		reg Z80_WAIT_DELAY, Z80_AS_DELAY;
 	
-		localparam	ZBUS_IDLE   = 0,
-						ZBUS_M68K_ACCESS   = 1,
-						ZBUS_Z80_ACCESS = 2,
+		localparam	ZBUS_IDLE        = 0,
+						ZBUS_M68K_ACCESS = 1,
+						ZBUS_Z80_ACCESS  = 2,
 						ZBUS_M68K_FINISH = 3,
-						ZBUS_Z80_FINISH = 4;
+						ZBUS_Z80_FINISH  = 4;
 	
 		ZBUS_WE <= 0;
 		ZBUS_RD <= 0;
@@ -652,7 +636,7 @@ module BA
 			Z80_BR_N <= 1;
 			Z80_BGACK_N <= 1;
 			Z80_AS_N <= 1;
-			Z80_WAIT_N <= 1;
+//			Z80_WAIT_N <= 1;
 			Z80_BGACK_DIS <= 0;
 			Z80_BGACK_DIS2 <= 0;
 			Z80_AS_DELAY <= 0;
@@ -777,7 +761,7 @@ module BA
 	// 4000-4003 (4000-5FFF)
 	wire YM_SEL = ZBUS_A[14:13] == 2'b10;
 	
-	assign Z80_DO = !Z80_ZBUS_DTACK_N ? Z80_ZBUS_D : Z80_MBUS_D;
+	assign Z80_DI = !Z80_ZBUS_DTACK_N ? Z80_ZBUS_D : Z80_MBUS_D;
 	assign Z80_WAIT_N = ~Z80_MBUS_DTACK_N | ~Z80_ZBUS_DTACK_N | ~Z80_IO;
 	
 	assign ZA = ZBUS_A;
