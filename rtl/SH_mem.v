@@ -12,8 +12,8 @@ module SH_regram (
 
 	input	  clock;
 	input	[31:0]  data;
-	input	[4:0]  rdaddress;
-	input	[4:0]  wraddress;
+	input	[3:0]  rdaddress;
+	input	[3:0]  wraddress;
 	input	  wren;
 	output	[31:0]  q;
 `ifndef ALTERA_RESERVED_QIS
@@ -74,7 +74,7 @@ module SH_regram (
 	altdpram	altdpram_component (
 				.data (data),
 				.inclock (clock),
-				.outclock (clock),
+//				.outclock (clock),
 				.rdaddress (rdaddress),
 				.wraddress (wraddress),
 				.wren (wren),
@@ -82,7 +82,7 @@ module SH_regram (
 				.aclr (1'b0),
 				.byteena (1'b1),
 				.inclocken (1'b1),
-				.outclocken (1'b1),
+//				.outclocken (1'b1),
 				.rdaddressstall (1'b0),
 				.rden (1'b1),
 //				.sclr (1'b0),
@@ -101,7 +101,7 @@ module SH_regram (
 		altdpram_component.rdcontrol_reg = "UNREGISTERED",
 		altdpram_component.read_during_write_mode_mixed_ports = "CONSTRAINED_DONT_CARE",
 		altdpram_component.width = 32,
-		altdpram_component.widthad = 5,
+		altdpram_component.widthad = 4,
 		altdpram_component.width_byteena = 1,
 		altdpram_component.wraddress_aclr = "OFF",
 		altdpram_component.wraddress_reg = "INCLOCK",
@@ -259,7 +259,7 @@ module CACHE_TAG (
 	altdpram	altdpram_component (
 				.data (data),
 				.inclock (clock),
-				.outclock (clock),
+//				.outclock (clock),
 				.rdaddress (rdaddress),
 				.wraddress (wraddress),
 				.wren (wren),
@@ -267,7 +267,7 @@ module CACHE_TAG (
 				.aclr (1'b0),
 				.byteena (1'b1),
 				.inclocken (1'b1),
-				.outclocken (1'b1),
+//				.outclocken (1'b1),
 				.rdaddressstall (1'b0),
 				.rden (1'b1),
 				//.sclr (1'b0),
@@ -369,7 +369,7 @@ module CACHE_LRU (
 	altdpram	altdpram_component (
 				.data (data),
 				.inclock (clock),
-				.outclock (clock),
+//				.outclock (clock),
 				.rdaddress (rdaddress),
 				.wraddress (wraddress),
 				.wren (wren),
@@ -377,7 +377,7 @@ module CACHE_LRU (
 				.aclr (1'b0),
 				.byteena (1'b1),
 				.inclocken (1'b1),
-				.outclocken (1'b1),
+//				.outclocken (1'b1),
 				.rdaddressstall (1'b0),
 				.rden (1'b1),
 				//.sclr (1'b0),

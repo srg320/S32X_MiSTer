@@ -61,11 +61,11 @@ module BA
 	input         Z80_RD_N,
 	input         Z80_MREQ_N,
 	input         Z80_M1_N,
-	output        Z80_WAIT_N,
+	output reg    Z80_WAIT_N,
 	//input         Z80_RFSH_N,
-	output        Z80_BUSRQ_N,
+	output reg    Z80_BUSRQ_N,
 	input         Z80_BUSAK_N,
-	output        Z80_RESET_N,
+	output reg    Z80_RESET_N,
 	
 	input  [23:1] VBUS_A,
 	output [15:0] VBUS_D,
@@ -76,7 +76,9 @@ module BA
 	input         VBUS_BGACK_N,
 	
 	input         MEM_RDY,
-	input         PAUSE_EN
+	input         PAUSE_EN,
+	
+	output  [7:0] DBG_Z80_HOOK
 );
 
 	wire M68K_INTACK = &M68K_FC & ~M68K_AS_N;
@@ -183,9 +185,9 @@ module BA
 				end
 				
 				if (!VBUS_BGACK_N) begin
-	//				rfs_rom_timer <= 0;
+//					rfs_rom_timer <= 0;
 					rfs_rom_pend <= 0;
-	//				rfs_ram_timer <= 0;
+//					rfs_ram_timer <= 0;
 					rfs_ram_pend <= 0;
 					rfs_ram_delay <= 2'd0;
 				end
@@ -296,8 +298,8 @@ module BA
 								//VDP: C00000-C0001F (+mirrors)
 								if (M68K_A[23:21] == 3'b110 && !M68K_A[18:16] && !M68K_A[7:5]) begin
 									VDP_SEL <= 1;
-									if (rfs_rom_pend && !M68K_A[4] && !M68K_RNW) rfs_rom_pend <= 0;
-									if (rfs_ram_pend && !M68K_A[4] && !M68K_RNW) rfs_ram_pend <= 0;
+//									if (!M68K_A[4] && !M68K_RNW) begin rfs_rom_pend <= 0; rfs_rom_timer <= '0; rfs_rom_delay <= 2'd0; end
+//									if (!M68K_A[4] && !M68K_RNW) begin rfs_ram_pend <= 0; rfs_ram_timer <= '0; rfs_ram_delay <= 2'd0; end
 									mstate <= MBUS_VDP_READ;
 								end
 								
@@ -316,7 +318,6 @@ module BA
 							
 							default:;
 						endcase
-//						DBG_HOOK2 <= '0;
 					end
 					else if (VBUS_SEL && VDP_MBUS_DTACK_N) begin
 						msrc <= MSRC_VDP;
@@ -356,8 +357,8 @@ module BA
 							default:;
 						endcase
 					end
-	//				else if (Z80_IO && !Z80_ZBUS && Z80_MBUS_DTACK_N && !Z80_AS_N) begin
-					else if (Z80_IO && !Z80_ZBUS_AREA && Z80_MBUS_DTACK_N && !Z80_BGACK_N && Z80_BR_N) begin
+					else if (Z80_IO && !Z80_ZBUS_AREA && Z80_MBUS_DTACK_N && !Z80_AS_N) begin
+//					else if (Z80_IO && !Z80_ZBUS_AREA && Z80_MBUS_DTACK_N && !Z80_BGACK_N && Z80_BR_N) begin
 						msrc <= MSRC_Z80;
 						MBUS_A <= Z80_A[15] ? {BAR[23:15],Z80_A[14:1]} : {16'hC000, Z80_A[7:1]};
 						MBUS_DO <= {Z80_DO,Z80_DO};
@@ -539,7 +540,8 @@ module BA
 		end
 	end
 	
-	assign MBUS_DI = ZBUS_SEL ? (!Z80_BUSRQ_N ? {MBUS_ZBUS_D, MBUS_ZBUS_D} : OPEN_BUS) :
+	assign MBUS_DI = VDP_SEL ? (MBUS_A[4:2] == 3'b001 ? {OPEN_BUS[15:10],VDI[9:0]} : VDI) :
+	                 ZBUS_SEL ? (!Z80_BUSRQ_N ? {MBUS_ZBUS_D, MBUS_ZBUS_D} : OPEN_BUS) :
 						  CTRL_SEL ? CTRL_DO :
 						  VDI;
 	
@@ -608,14 +610,13 @@ module BA
 	wire        Z80_ZBUS_AREA = ~Z80_A[15] && ~&Z80_A[14:8];
 	wire        Z80_ZBUS_SEL = Z80_ZBUS_AREA & Z80_IO;
 	wire        ZBUS_FREE = ~Z80_BUSRQ_N & Z80_RESET_N;
-	//wire        Z80_IO_PRE = ~Z80_MREQ_N & Z80_RFSH_N;
 	
-	//wire       Z80_MBUS_SEL = ~Z80_MREQ_N & ~Z80_ZBUS_AREA;
-	wire        Z80_MBUS_SEL = Z80_IO & ~Z80_ZBUS_AREA;
+	wire        Z80_MBUS_SEL = ~Z80_MREQ_N & ~Z80_ZBUS_AREA;
+//	wire        Z80_MBUS_SEL = Z80_IO & ~Z80_ZBUS_AREA;
 	wire  [7:0] Z80_MBUS_D = Z80_A[0] ? MBUS_DI[7:0] : MBUS_DI[15:8];
 	
 	always @(posedge CLK) begin
-		reg [2:0] zstate;
+		reg [2:0] zstate, zstate2;
 		reg Z80_BGACK_DIS, Z80_BGACK_DIS2;
 		reg Z80_WAIT_DELAY, Z80_AS_DELAY;
 	
@@ -633,16 +634,17 @@ module BA
 			MBUS_ZBUS_DTACK_N <= 1;
 			Z80_ZBUS_DTACK_N  <= 1;
 			
+			zstate2 <= 0;
 			Z80_BR_N <= 1;
 			Z80_BGACK_N <= 1;
 			Z80_AS_N <= 1;
-//			Z80_WAIT_N <= 1;
+			Z80_WAIT_N <= 1;
 			Z80_BGACK_DIS <= 0;
 			Z80_BGACK_DIS2 <= 0;
 			Z80_AS_DELAY <= 0;
 			Z80_WAIT_DELAY <= 0;
 			
-//			DBG_Z80_HOOK <= 8'd255;
+			DBG_Z80_HOOK <= 8'd255;
 		end
 		else if (ENABLE) begin
 			if (~ZBUS_SEL)     MBUS_ZBUS_DTACK_N <= 1;
@@ -684,8 +686,50 @@ module BA
 				end
 			endcase
 			
+			if (DBG_Z80_HOOK < 254) DBG_Z80_HOOK <= DBG_Z80_HOOK + 1'd1;
+			case (zstate2)
+				0: if (Z80_MBUS_SEL && Z80_BR_N && Z80_BGACK_N && VBUS_BR_N && VBUS_BGACK_N && M68K_CLKENp) begin
+					Z80_BR_N <= 0;
+					zstate2 <= zstate2 + 3'd1;
+				end
+				
+				1: if (!M68K_BG_N && VBUS_BR_N && VBUS_BGACK_N && M68K_AS_N && M68K_CLKENn) begin
+					Z80_BGACK_N <= 0;
+					DBG_Z80_HOOK <= 8'd0;
+					zstate2 <= zstate2 + 3'd1;
+				end
+				
+				2: if (!M68K_BG_N && M68K_CLKENp) begin
+					Z80_BR_N <= 1;
+					zstate2 <= zstate2 + 3'd1;
+				end
+				
+				3: if (M68K_CLKENp) begin
+					Z80_AS_N <= 0;
+					zstate2 <= zstate2 + 3'd1;
+				end
+				
+				4: if (!Z80_MBUS_SEL && M68K_CLKENp) begin
+					zstate2 <= 5;
+				end
+				
+				5: if (M68K_CLKENp) begin
+					Z80_AS_N <= 1;
+					zstate2 <= 7;
+				end
+				
+				6: if (M68K_CLKENp)begin
+					Z80_AS_N <= 1;
+					zstate2 <= 7;
+				end
+				
+				7: if (M68K_CLKENp) begin
+					Z80_BGACK_N <= 1;
+					DBG_Z80_HOOK <= 8'd255;
+					zstate2 <= 0;
+				end
+			endcase
 			
-	//		if (DBG_Z80_HOOK < 254) DBG_Z80_HOOK <= DBG_Z80_HOOK + 1;
 	//		
 	//		if (Z80_MBUS_SEL && Z80_BR_N && Z80_BGACK_N && VBUS_BR_N && VBUS_BGACK_N && M68K_CLKENp) begin
 	//			Z80_BR_N <= 0;
@@ -710,36 +754,36 @@ module BA
 	//			Z80_BGACK_N <= 1;
 	//			DBG_Z80_HOOK <= 8'd255;
 	//		end
-	//		
-	//		if (Z80_MBUS_SEL && Z80_MBUS_DTACK_N && Z80_BGACK_N && Z80_WAIT_N) begin
-	//			Z80_WAIT_N <= 0;
-	//		end
-	//		else if (!Z80_BGACK_N && !Z80_AS_N && !Z80_WAIT_N && !Z80_WAIT_DELAY && M68K_CLKENp) begin
-	//			Z80_WAIT_DELAY <= 1;
-	//		end
-	//		else if (!Z80_BGACK_N && !Z80_WAIT_N && Z80_WAIT_DELAY && M68K_CLKENp) begin
-	//			Z80_WAIT_N <= 1;
-	//			Z80_WAIT_DELAY <= 0;
-	//		end
 			
-			if (Z80_MBUS_SEL && Z80_BR_N && Z80_BGACK_N && VBUS_BR_N && VBUS_BGACK_N && M68K_CLKENp) begin
-				Z80_BR_N <= 0;
+			if (Z80_MBUS_SEL && Z80_MBUS_DTACK_N && Z80_BGACK_N && Z80_WAIT_N) begin
+				Z80_WAIT_N <= 0;
 			end
-			else if (!Z80_BR_N && !M68K_BG_N && VBUS_BR_N && VBUS_BGACK_N && M68K_AS_N && M68K_CLKENn) begin
-				Z80_BGACK_N <= 0;
+			else if (!Z80_BGACK_N && !Z80_AS_N && !Z80_WAIT_N && !Z80_WAIT_DELAY && M68K_CLKENp) begin
+				Z80_WAIT_DELAY <= 1;
 			end
-			else if (!Z80_BGACK_N && !Z80_BR_N && !M68K_BG_N && M68K_CLKENp) begin
-				Z80_BR_N <= 1;
+			else if (!Z80_BGACK_N && !Z80_WAIT_N && Z80_WAIT_DELAY && M68K_CLKENp) begin
+				Z80_WAIT_N <= 1;
+				Z80_WAIT_DELAY <= 0;
 			end
-			else if (!Z80_BGACK_DIS2 && !Z80_BGACK_N && Z80_BR_N && !Z80_MBUS_SEL && M68K_CLKENn) begin
-				Z80_BGACK_DIS <= 1;
-				Z80_BGACK_DIS2 <= Z80_BGACK_DIS;
-			end
-			else if (!Z80_BGACK_N && Z80_BGACK_DIS2 && M68K_CLKENn) begin
-				Z80_BGACK_N <= 1;
-				Z80_BGACK_DIS <= 0;
-				Z80_BGACK_DIS2 <= 0;
-			end
+			
+//			if (Z80_MBUS_SEL && Z80_BR_N && Z80_BGACK_N && VBUS_BR_N && VBUS_BGACK_N && M68K_CLKENp) begin
+//				Z80_BR_N <= 0;
+//			end
+//			else if (!Z80_BR_N && !M68K_BG_N && VBUS_BR_N && VBUS_BGACK_N && M68K_AS_N && M68K_CLKENn) begin
+//				Z80_BGACK_N <= 0;
+//			end
+//			else if (!Z80_BGACK_N && !Z80_BR_N && !M68K_BG_N && M68K_CLKENp) begin
+//				Z80_BR_N <= 1;
+//			end
+//			else if (!Z80_BGACK_DIS2 && !Z80_BGACK_N && Z80_BR_N && !Z80_MBUS_SEL && M68K_CLKENn) begin
+//				Z80_BGACK_DIS <= 1;
+//				Z80_BGACK_DIS2 <= Z80_BGACK_DIS;
+//			end
+//			else if (!Z80_BGACK_N && Z80_BGACK_DIS2 && M68K_CLKENn) begin
+//				Z80_BGACK_N <= 1;
+//				Z80_BGACK_DIS <= 0;
+//				Z80_BGACK_DIS2 <= 0;
+//			end
 	
 			
 		end
@@ -762,7 +806,7 @@ module BA
 	wire YM_SEL = ZBUS_A[14:13] == 2'b10;
 	
 	assign Z80_DI = !Z80_ZBUS_DTACK_N ? Z80_ZBUS_D : Z80_MBUS_D;
-	assign Z80_WAIT_N = ~Z80_MBUS_DTACK_N | ~Z80_ZBUS_DTACK_N | ~Z80_IO;
+//	assign Z80_WAIT_N = ~Z80_MBUS_DTACK_N | ~Z80_ZBUS_DTACK_N | ~Z80_IO;
 	
 	assign ZA = ZBUS_A;
 	assign ZDO = ZBUS_DO;

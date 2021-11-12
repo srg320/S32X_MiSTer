@@ -133,11 +133,7 @@ module gen
 	input         SPR_GRID_EN,
 
 	output [23:0] DBG_M68K_A,
-	output [23:0] DBG_MBUS_A/*,
-	output [15:0] DBG_HOOK,
-	output  [7:0] DBG_HOOK2,
-	output        DBG_HOOK3,
-	output  [7:0] DBG_Z80_HOOK*/
+	output [23:0] DBG_VA_A
 );
 
 reg reset;
@@ -309,14 +305,14 @@ wire        Z80_RESET_N;
 wire        Z80_BUSRQ_N;
 wire        Z80_BUSAK_N;
 
-T80s #(.T2Write(1)) Z80
-//T80pa Z80
+//T80s #(.T2Write(1)) Z80
+T80pa Z80
 (
 	.RESET_n(Z80_RESET_N),
 	.CLK(MCLK),
-//	.CEN_p(Z80_CLKENp),
-//	.CEN_n(Z80_CLKENn),
-	.CEN(Z80_CLKENn),
+	.CEN_p(Z80_CLKENp),
+	.CEN_n(Z80_CLKENn),
+//	.CEN(Z80_CLKENn),
 	.BUSRQ_n(Z80_BUSRQ_N),
 	.BUSAK_n(Z80_BUSAK_N),
 	.RFSH_n(Z80_RFSH_N),
@@ -424,7 +420,7 @@ BA ba
 	.Z80_MREQ_N(Z80_MREQ_N),
 //	.Z80_M1_N(Z80_M1_N),
 	.Z80_WAIT_N(Z80_WAIT_N),
-	//.Z80_RFSH_N(),
+//	.Z80_RFSH_N(Z80_RFSH_N),
 	.Z80_BUSRQ_N(Z80_BUSRQ_N),
 	.Z80_BUSAK_N(Z80_BUSAK_N),
 	.Z80_RESET_N(Z80_RESET_N),
@@ -450,14 +446,13 @@ assign ZDI = !ZRAM_N ? ZRAM_DO :
 				 8'hFF;
 
 				 
-assign DBG_MBUS_A = {VA,1'b0};
+assign DBG_VA_A = {VA,1'b0};
 assign DBG_M68K_A = {M68K_A,1'b0};
 
 
 //--------------------------------------------------------------
 // VDP + PSG
 //--------------------------------------------------------------
-reg         VDP_SEL;
 wire [15:0] VDP_DO;
 wire        VDP_DTACK_N;
 
@@ -577,7 +572,6 @@ jt89 psg
 //--------------------------------------------------------------
 // Gamepads
 //--------------------------------------------------------------
-reg         IO_SEL;
 wire  [7:0] IO_DO;
 wire        IO_DTACK_N;
 

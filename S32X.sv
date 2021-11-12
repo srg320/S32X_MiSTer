@@ -593,7 +593,10 @@ wire        S32X_YSO_N;
 wire [15:0] S32X_SL;
 wire [15:0] S32X_SR;
 
-S32X #(1,1,0) S32X
+S32X #(
+	.USE_ROM_WAIT(1),
+	.USE_ASYNC_FB(0)
+) S32X
 (
 	.RST_N(~(reset | cart_download)),
 	.CLK(clk_sys),
